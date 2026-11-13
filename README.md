@@ -41,3 +41,5 @@ bun A:/tarve/packages/core/cli.ts build src/main.tsx --runtime txiki --native-fe
 ```
 
 O build distribui um `.exe`. O Tarve extrai sua biblioteca nativa embutida para o cache local na primeira execução. `src/devices/catalog.ts` define as interfaces HID reconhecidas, e os módulos `hs80.ts` e `viper.ts` concentram os comandos de cada família.
+
+O painel segue o tema claro ou escuro do Windows ao abrir. As imagens incorporadas no executável são dos fabricantes. [Corsair HS80 MAX](https://www.corsair.com/us/en/p/gaming-headsets/ca-9011295-na/hs80-max-wireless-gaming-headset-steel-gray-ca-9011295-na) · [Razer Viper V3 Pro](https://www.razer.com/gaming-mice/razer-viper-v3-pro/RZ01-05120100-R3U1)
