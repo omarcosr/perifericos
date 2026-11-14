@@ -16,7 +16,7 @@ const HWND_MESSAGE = -3n;
 const taskbarClass = wide("Shell_TrayWnd");
 
 /** Tarve provides one tray icon. Windows registers this second indicator in the same process. */
-export function createMouseBatteryIcon(name: string) {
+export function createMouseBatteryIcon() {
   const hwnd = user.CreateWindowExW(0, wide("Static"), wide("Perifericos.Tarve.MouseBattery"),
     0, 0, 0, 0, 0, HWND_MESSAGE, 0n, 0n, 0n);
   if (!hwnd) return undefined;
@@ -29,6 +29,7 @@ export function createMouseBatteryIcon(name: string) {
   data.setUint32(16, 2, true);
   data.setUint32(20, NIF_ICON_AND_TIP, true);
   let level: number | undefined;
+  let tooltip = "Mouse desconectado";
   let lastTaskbar = 0n;
   let lastSize: 16 | 32 | undefined;
   let added = false;
@@ -45,7 +46,7 @@ export function createMouseBatteryIcon(name: string) {
     if (!icon) return;
     try {
       data.setBigInt64(32, icon, true);
-      entry.set(wide(batteryTooltip(name, level).slice(0, 127)), 40);
+      entry.set(wide(tooltip.slice(0, 127)), 40);
       added = Boolean((sameTaskbar && shell.Shell_NotifyIconW(NIM_MODIFY, entry)) || shell.Shell_NotifyIconW(NIM_ADD, entry));
       lastTaskbar = taskbar;
       lastSize = size;
@@ -60,9 +61,11 @@ export function createMouseBatteryIcon(name: string) {
   // Message-only windows do not receive TaskbarCreated. Re-register if Explorer recreates the taskbar.
   const recovery = setInterval(publish, 5000);
   return {
-    update(next: number | undefined): void {
-      if (level === next) return;
+    update(name?: string, next?: number, charging?: boolean): void {
+      const caption = name ? batteryTooltip(name, next, charging) : "Mouse desconectado";
+      if (level === next && tooltip === caption) return;
       level = next;
+      tooltip = caption;
       dirty = true;
       publish();
     },

@@ -9,6 +9,7 @@ export type HeadsetStatus = "looking" | "disconnected" | "connected" | "icue" | 
 export interface HeadsetState {
   status: HeadsetStatus;
   battery?: number;
+  charging?: boolean;
   hardwareMuted?: boolean;
   windowsMuted?: boolean;
 }
@@ -57,7 +58,7 @@ export class HeadsetController {
   private publish(state: HeadsetState): void {
     const old = this.state;
     this.state = state;
-    if (state.status !== old.status || state.battery !== old.battery || state.hardwareMuted !== old.hardwareMuted ||
+    if (state.status !== old.status || state.battery !== old.battery || state.charging !== old.charging || state.hardwareMuted !== old.hardwareMuted ||
         state.windowsMuted !== old.windowsMuted) this.onChange();
   }
 
@@ -166,14 +167,20 @@ export class HeadsetController {
       this.windowsDue = now + 1000;
     }
     let battery = old.battery;
+    let charging = old.charging;
     if (now >= this.batteryDue) {
       battery = undefined;
+      charging = undefined;
       try {
         for (let i = 0; i < 3 && battery === undefined; i++) battery = headsetBattery(await link.get(0x0f));
       } catch { /* The mic and LEDs can continue while telemetry is unavailable. */ }
+      try {
+        const status = await link.get(0x10);
+        if (status <= 2) charging = status === 1;
+      } catch { /* The battery level can still be shown when charge state is unavailable. */ }
       this.batteryDue = performance.now() + 15000;
     }
-    this.publish({ status: "connected", hardwareMuted, windowsMuted, battery });
+    this.publish({ status: "connected", hardwareMuted, windowsMuted, battery, charging });
     const muted = hardwareMuted || windowsMuted;
     if (old.status === "connected" && muted !== (old.hardwareMuted || old.windowsMuted)) {
       try { playSound(muted ? this.preferences.onMute : this.preferences.onUnmute); }

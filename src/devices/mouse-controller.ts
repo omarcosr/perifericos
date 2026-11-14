@@ -1,8 +1,18 @@
 import { hidInterfaces, type HidInterface } from "../win/hid";
-import { queryViper, viperPresence, type MouseSetting, type MouseState } from "./viper";
+import { mchoseK7, viper, type MouseModelId } from "./catalog";
+import { queryK7 } from "./mchose";
+import type { MouseSetting, MouseState } from "./mouse-state";
+import { queryViper } from "./viper";
+
+const drivers = [
+  { model: viper, query: queryViper },
+  { model: mchoseK7, query: queryK7 },
+];
+type Target = { driver: typeof drivers[number]; entries: HidInterface[] };
 
 export class MouseController {
   state: MouseState = { status: "looking" };
+  models: readonly MouseModelId[] = [];
   busy = false;
   notice?: { text: string; error: boolean };
   private running = false;
@@ -10,6 +20,7 @@ export class MouseController {
   private timer?: ReturnType<typeof setTimeout>;
   private pending?: Promise<void>;
   private presence = "";
+  private selected?: MouseModelId;
   private generation = 0;
   private nextRead = 0;
   private quickUntil = 0;
@@ -25,7 +36,7 @@ export class MouseController {
   setForeground(foreground: boolean): void {
     if (this.foreground === foreground) return;
     this.foreground = foreground;
-    if (foreground) this.refresh();
+    if (foreground) this.refreshReading();
     else if (this.running) this.schedule();
   }
 
@@ -36,15 +47,37 @@ export class MouseController {
     await this.pending;
   }
 
-  refresh(): void {
+  private refreshReading(): void {
     this.nextRead = 0;
     if (this.running && !this.pending) this.tick();
   }
 
-  apply(kind: MouseSetting["kind"], value: number): void {
-    if (!this.foreground || !this.running || this.pending || this.state.status !== "connected") return;
-    const entries = this.scan();
-    if (entries && this.state.status === "connected") this.read(entries, { kind, value, previous: this.state });
+  select(model: MouseModelId): void {
+    if (this.selected === model || !this.models.includes(model)) return;
+    this.selected = model;
+    if (this.running) this.tick();
+  }
+
+  async apply(kind: MouseSetting["kind"], value: number): Promise<void> {
+    if (!this.foreground || !this.running || this.busy || this.state.status !== "connected") return;
+    const previous = this.state;
+    const generation = this.generation;
+    this.busy = true;
+    this.notice = undefined;
+    this.onChange();
+    await this.pending;
+    if (!this.running) return;
+    const target = this.scan();
+    const current = this.state;
+    if (target && generation === this.generation && current.status === "connected" && current.path === previous.path &&
+        current.profile === previous.profile && (kind === "polling" || current.dpiStage === previous.dpiStage)) {
+      this.read(target, { kind, value, previous });
+    } else {
+      this.busy = false;
+      this.notice = { text: "O mouse ou o perfil mudou. Confira os valores antes de aplicar.", error: true };
+      this.onChange();
+      this.refreshReading();
+    }
   }
 
   private publish(state: MouseState): void {
@@ -53,21 +86,37 @@ export class MouseController {
     if (changed) this.onChange();
   }
 
-  private scan(): HidInterface[] | undefined {
+  private scan(): Target | undefined {
     try {
       const entries = hidInterfaces();
-      const presence = viperPresence(entries);
+      const targets = drivers.map(driver => {
+        const { vendor, products } = driver.model.match;
+        return { driver, entries: entries.filter(entry =>
+          entry.vendor === vendor && products.some(product => product === entry.product)) };
+      }).filter(target => target.entries.length);
+      const models = targets.map(target => target.driver.model.id);
+      const modelsChanged = models.length !== this.models.length || models.some((model, index) => model !== this.models[index]);
+      if (modelsChanged) this.models = models;
+      const target = targets.find(candidate => candidate.driver.model.id === this.selected) ?? targets[0];
+      const model = target?.driver.model.id;
+      if (model) this.selected = model;
+      const presence = target ? target.entries.map(entry => entry.path.toLowerCase()).sort().join("\n") : "";
       if (presence !== this.presence) {
         this.presence = presence;
         this.generation++;
         this.notice = undefined;
         this.nextRead = 0;
         this.quickUntil = performance.now() + 10000;
-        this.publish({ status: presence ? "looking" : "disconnected" });
+        this.publish({ status: target ? "looking" : "disconnected", model });
+      } else if (!target) {
+        this.publish({ status: "disconnected" });
+      } else if (modelsChanged) {
+        this.onChange();
       }
-      if (!presence) this.publish({ status: "disconnected" });
-      return presence ? entries : undefined;
+      return target;
     } catch {
+      this.presence = "";
+      this.models = [];
       this.generation++;
       this.publish({ status: "unavailable" });
       return undefined;
@@ -75,8 +124,8 @@ export class MouseController {
   }
 
   private tick(): void {
-    const entries = this.scan();
-    if (entries && !this.pending && performance.now() >= this.nextRead) this.read(entries);
+    const target = this.scan();
+    if (target && !this.pending && !this.busy && performance.now() >= this.nextRead) this.read(target);
     this.schedule();
   }
 
@@ -85,37 +134,40 @@ export class MouseController {
     if (this.running) this.timer = setTimeout(() => this.tick(), this.foreground ? 850 : 5000);
   }
 
-  private read(entries: HidInterface[], setting?: MouseSetting): void {
+  private read(target: Target, setting?: MouseSetting): void {
     const generation = this.generation;
-    const batteryOnly = !this.foreground;
-    this.busy = true;
-    if (setting) this.notice = undefined;
-    this.onChange();
-    this.pending = queryViper(entries, setting, batteryOnly).then(state => {
+    const batteryOnly = !this.foreground && !setting;
+    const model = target.driver.model.id;
+    this.pending = target.driver.query(target.entries, setting, batteryOnly).then(result => {
       if (generation !== this.generation) return;
+      const state = { ...result, model };
+      if (this.state.status === "connected" && state.status === "waiting") this.quickUntil = performance.now() + 5000;
       this.publish(batteryOnly && state.status === "connected" && state.path === this.state.path
         ? { ...this.state, ...state } : state);
-      if (setting && state.status === "connected") {
-        const confirmed = setting.kind === "dpi" ? state.dpi?.x === setting.value && state.dpi?.y === setting.value : state.polling === setting.value;
+      if (setting) {
+        const sameProfile = state.profile === setting.previous.profile;
+        const confirmed = state.status === "connected" && sameProfile && (setting.kind === "dpi"
+          ? state.dpiStage === setting.previous.dpiStage && state.dpi?.x === setting.value && state.dpi?.y === setting.value
+          : state.polling === setting.value);
         this.notice = confirmed ? { text: setting.kind === "dpi" ? "DPI confirmado pelo mouse." : "Taxa confirmada pelo mouse.", error: false }
-          : { text: "O mouse não confirmou o ajuste. Atualize e tente novamente.", error: true };
+          : { text: "O mouse não confirmou o ajuste. Aguarde a próxima leitura e tente de novo.", error: true };
       }
     }).catch(error => {
       if (generation !== this.generation) return;
       if (setting) this.notice = { text: error instanceof Error ? error.message : "Não foi possível aplicar o ajuste.", error: true };
-      else this.publish({ status: "unavailable" });
+      else this.publish({ status: "unavailable", model });
     }).finally(() => {
       this.pending = undefined;
-      this.busy = false;
+      if (setting) this.busy = false;
       const connected = this.state.status === "connected";
       if (generation === this.generation) {
         const now = performance.now();
-        const interval = this.foreground ? (connected ? 15000 : now < this.quickUntil ? 650 : 3500)
+        const interval = this.foreground ? (connected ? 5000 : now < this.quickUntil ? 650 : 3500)
           : (connected ? 30000 : 10000);
         this.nextRead = now + interval;
       }
-      this.onChange();
-      if (this.running && this.foreground && batteryOnly) this.refresh();
+      if (setting) this.onChange();
+      if (this.running && (generation !== this.generation || (this.foreground && batteryOnly))) this.refreshReading();
     });
   }
 }

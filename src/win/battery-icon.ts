@@ -20,8 +20,9 @@ const colors = {
   mouse: { outline: 0x568e78, track: 0x182d27, fill: 0x2a644f },
 };
 
-export function batteryTooltip(name: string, level?: number): string {
-  return `${name} · ${level === undefined ? "bateria sem leitura" : `${level}% de bateria`}`;
+export function batteryTooltip(name: string, level?: number, charging?: boolean): string {
+  const battery = level === undefined ? (charging ? "" : " · bateria sem leitura") : ` · ${level}% de bateria`;
+  return `${name}${battery}${charging ? " · Carregando" : ""}`;
 }
 
 function insideRoundedRect(x: number, y: number, left: number, top: number, right: number, bottom: number, radius: number): boolean {

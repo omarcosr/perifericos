@@ -1,5 +1,7 @@
 import { createApp, requestSingleInstance, type AppHandle, type TrayHandle } from "@tarve/core";
-import { hs80, viper } from "./devices/catalog";
+import { spawn } from "node:child_process";
+import { AppUpdates } from "./app-updates";
+import { hs80, mouseModels } from "./devices/catalog";
 import { HeadsetController } from "./devices/headset-controller";
 import { MouseController } from "./devices/mouse-controller";
 import { Panel, type PanelActions, type PanelState, type Tab } from "./ui/panel";
@@ -30,25 +32,44 @@ async function main(): Promise<void> {
   try { store.importFirstRun(process.env.PERIFERICOS_IMPORT_INI); }
   catch { importError = "Não foi possível importar as preferências do HS80."; }
   const preferences = store.load();
+  const packagedApp = packaged();
   const state: PanelState = {
     visible: !args.includes("--run"), dark: systemDark(), tab: args.includes("--mouse") ? "mouse" : "headset",
-    preferences, startup: false, startupPending: false, startupAvailable: packaged(),
-    headset: { status: "looking" }, mouse: { status: "looking" }, mouseBusy: false,
+    preferences, startup: false, startupPending: false, startupAvailable: packagedApp,
+    headset: { status: "looking" }, mouse: { status: "looking" }, mouseModels: [], mouseBusy: false,
     headsetNotice: importError, dpi: "", rate: "",
   };
   const draw = () => { if (state.visible && !exit) app?.update(); };
+  const updates = new AppUpdates(view => {
+    if (state.updates) state.updates.view = view;
+    draw();
+  });
+  if (packagedApp) {
+    const metadata = JSON.parse(process.env.TARVE_APP_METADATA ?? "{}") as { version?: string };
+    const previousInstall = args.find(arg => arg.startsWith("--updated="))?.slice("--updated=".length);
+    state.updates = {
+      open: args.includes("--updates"), version: metadata.version ?? "",
+      view: !previousInstall ? updates.view : previousInstall === metadata.version ? { status: "installed" }
+        : { status: "error", message: "A nova versão não iniciou. O Periféricos manteve a versão anterior." },
+    };
+  }
   const headset = new HeadsetController(preferences, () => {
-    const previous = state.headset.battery;
+    const previous = state.headset;
     state.headset = headset.state;
-    if (!exit && previous !== state.headset.battery) {
-      const level = state.headset.battery;
-      tray?.update({ icon: headsetTrayImage(level), tooltip: batteryTooltip(hs80.label, level) });
+    const { battery, charging } = state.headset;
+    if (!exit && (previous.battery !== battery || previous.charging !== charging)) {
+      const tooltip = batteryTooltip(hs80.label, battery, charging);
+      tray?.update(previous.battery === battery ? { tooltip } : { icon: headsetTrayImage(battery), tooltip });
     }
     draw();
   });
   const mouse = new MouseController(() => {
     const current = mouse.state;
-    if (current.status !== "connected" || current.path !== state.mouse.path) dpiEdited = rateEdited = false;
+    if (current.status !== "connected" || current.path !== state.mouse.path || current.profile !== state.mouse.profile) {
+      dpiEdited = rateEdited = false;
+    } else if (current.dpiStage !== state.mouse.dpiStage) {
+      dpiEdited = false;
+    }
     if (!mouse.busy && !mouse.notice?.error) {
       if (current.dpi?.x === Number(state.dpi) && current.dpi?.y === Number(state.dpi)) dpiEdited = false;
       if (current.polling === Number(state.rate)) rateEdited = false;
@@ -56,9 +77,10 @@ async function main(): Promise<void> {
     if (!dpiEdited) state.dpi = current.dpi ? String(current.dpi.x) : "";
     if (!rateEdited) state.rate = current.polling ? String(current.polling) : "";
     state.mouse = current;
+    state.mouseModels = mouse.models;
     state.mouseBusy = mouse.busy;
     state.mouseNotice = mouse.notice;
-    if (!exit) mouseIcon?.update(current.battery);
+    if (!exit) mouseIcon?.update(current.model ? mouseModels[current.model].label : undefined, current.battery, current.charging);
     draw();
   });
 
@@ -78,6 +100,13 @@ async function main(): Promise<void> {
     app?.activate();
   }
 
+  function openUpdates(): void {
+    if (!state.updates || state.updates.open || exit) return;
+    state.updates.open = true;
+    void updates.checkRemote();
+    draw();
+  }
+
   function hide(): void {
     state.visible = false;
     mouse.setForeground(false);
@@ -88,6 +117,7 @@ async function main(): Promise<void> {
 
   function shutdown(): Promise<void> {
     return exit ??= (async () => {
+      updates.stop();
       await Promise.allSettled([headset.stop(), mouse.stop()]);
       stopSound();
       mouseIcon?.remove();
@@ -130,10 +160,26 @@ async function main(): Promise<void> {
       draw();
     },
     unmute: () => headset.unmute(),
-    refreshMouse: () => mouse.refresh(),
+    selectMouse: model => mouse.select(model),
     editDpi(value) { if (/^\d{0,5}$/.test(value)) { state.dpi = value; dpiEdited = true; draw(); } },
     selectRate(value) { state.rate = value; rateEdited = true; draw(); },
     applyMouse: (kind, value) => mouse.apply(kind, value),
+    showUpdates: openUpdates,
+    closeUpdates() {
+      if (!state.updates) return;
+      state.updates.open = false;
+      draw();
+    },
+    checkUpdates: () => updates.checkRemote(),
+    async installUpdate() {
+      const version = await updates.install();
+      if (!version) return;
+      const next = state.visible ? ["--updates", `--updated=${version}`, ...(state.tab === "mouse" ? ["--mouse"] : [])] : ["--run"];
+      await quit();
+      const restarted = spawn(process.execPath, next, { detached: true, stdio: "ignore", windowsHide: true });
+      restarted.once("error", error => console.error("Reinício após atualização:", error));
+      restarted.unref();
+    },
   };
 
   try {
@@ -147,7 +193,10 @@ async function main(): Promise<void> {
     instance.onSecondInstance(launch => {
       if (launch.args.includes("--stop")) void quit();
       else if (launch.args.includes("--hide")) hide();
-      else if (!launch.args.includes("--run")) show(launch.args.includes("--mouse") ? "mouse" : state.tab);
+      else if (!launch.args.includes("--run")) {
+        if (launch.args.includes("--updates")) openUpdates();
+        show(launch.args.includes("--mouse") ? "mouse" : state.tab);
+      }
     });
     tray = app.tray({
       icon: headsetTrayImage(), tooltip: batteryTooltip(hs80.label), onClick: () => show(),
@@ -157,16 +206,18 @@ async function main(): Promise<void> {
       menu: [
         { id: "show", label: "Abrir painel", onSelect: () => show() },
         { id: "mouse", label: "Abrir aba Mouse", onSelect: () => show("mouse") },
+        ...(state.updates ? [{ id: "updates", label: "Atualizações", onSelect: () => { openUpdates(); show(); } }] : []),
         { id: "quit", label: "Encerrar controle", onSelect: () => { void quit(); } },
       ],
     });
     await app.ready;
     if (!state.visible) app.hide();
     if (!exit) {
-      mouseIcon = createMouseBatteryIcon(viper.label);
+      mouseIcon = createMouseBatteryIcon();
       headset.start();
       mouse.setForeground(state.visible && state.tab === "mouse");
       mouse.start();
+      if (state.visible && state.updates?.open && state.updates.view.status === "idle") void updates.checkRemote();
       setTimeout(() => {
         if (exit) return;
         try { state.startup = startupEnabled(); draw(); } catch { /* The user can retry from the panel. */ }

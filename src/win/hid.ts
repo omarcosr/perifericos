@@ -108,8 +108,8 @@ export function matchingHid(match: HidMatch, entries = hidInterfaces()): HidInte
 export class FeatureHid {
   private readonly handle: bigint;
 
-  constructor(entry: HidInterface) {
-    this.handle = open(entry.path);
+  constructor(entry: HidInterface, access = 0) {
+    this.handle = open(entry.path, access);
     if (this.handle === INVALID_HANDLE) throw new WindowsError("CreateFileW (feature)");
     if (!attributes(this.handle, entry)) {
       this.close();

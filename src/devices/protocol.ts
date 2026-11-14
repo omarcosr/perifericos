@@ -1,7 +1,8 @@
+import { viper } from "./catalog";
+import { validDpi } from "./mouse-state";
+
 export const HEADSET_PACKET_SIZE = 64;
 export const VIPER_PACKET_SIZE = 91;
-export const VIPER_DPI_MIN = 100;
-export const VIPER_DPI_MAX = 35000;
 
 export function headsetPacket(child: number, command: number, property = 0): Uint8Array {
   const packet = new Uint8Array(HEADSET_PACKET_SIZE);
@@ -48,15 +49,16 @@ export function viperStatus(report: Uint8Array, command: ViperCommand): number |
 
 export function viperBattery(raw: number): number { return Math.floor((raw * 100 + 127) / 255); }
 
-export function validDpi(dpi: number): boolean {
-  return Number.isInteger(dpi) && dpi >= VIPER_DPI_MIN && dpi <= VIPER_DPI_MAX;
+export function viperCharging(reply?: Uint8Array): boolean | undefined {
+  if (!reply || reply.length <= 10 || reply[6] < 2 || reply[10] > 1) return undefined;
+  return reply[10] === 1;
 }
 
 export function viperDpi(report: Uint8Array): { x: number; y: number } | undefined {
   if (report[6] < 5) return undefined;
   const x = (report[10] << 8) | report[11];
   const y = (report[12] << 8) | report[13];
-  return validDpi(x) && validDpi(y) ? { x, y } : undefined;
+  return validDpi(x, viper.dpi) && validDpi(y, viper.dpi) ? { x, y } : undefined;
 }
 
 export function pollingChoices(wireless: boolean): readonly number[] {

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { headsetBattery, headsetPacket, headsetReply, pollingCode, pollingHz, validDpi, viperDpi, viperReport, viperStatus } from "../src/devices/protocol";
+import { viper } from "../src/devices/catalog";
+import { headsetBattery, headsetPacket, headsetReply, pollingCode, pollingHz, viperCharging, viperDpi, viperReport, viperStatus } from "../src/devices/protocol";
+import { validDpi } from "../src/devices/mouse-state";
 
 describe("relatórios do HS80 MAX", () => {
   test("valida a resposta do filho e o código do comando", () => {
@@ -26,12 +28,21 @@ describe("relatórios do Viper V3 Pro", () => {
   });
 
   test("respeita os limites de DPI e polling de cada conexão", () => {
-    expect(validDpi(100)).toBe(true);
-    expect(validDpi(35000)).toBe(true);
-    expect(validDpi(35001)).toBe(false);
-    expect(validDpi(100.5)).toBe(false);
+    expect(validDpi(100, viper.dpi)).toBe(true);
+    expect(validDpi(35000, viper.dpi)).toBe(true);
+    expect(validDpi(35001, viper.dpi)).toBe(false);
+    expect(validDpi(100.5, viper.dpi)).toBe(false);
     expect(pollingCode(false, 8000)).toBeUndefined();
     expect(pollingHz(true, pollingCode(true, 8000)!)).toBe(8000);
     expect(pollingHz(false, 3)).toBeUndefined();
+  });
+
+  test("distingue carga, descarga e status sem leitura", () => {
+    const command = { group: 7, id: 0x84, size: 2 };
+    expect(viperCharging(viperReport(command, [0, 1]))).toBe(true);
+    expect(viperCharging(viperReport(command, [0, 0]))).toBe(false);
+    expect(viperCharging(viperReport(command, [0, 0xff]))).toBeUndefined();
+    expect(viperCharging(viperReport({ ...command, size: 1 }))).toBeUndefined();
+    expect(viperCharging()).toBeUndefined();
   });
 });

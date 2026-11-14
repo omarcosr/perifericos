@@ -1,12 +1,13 @@
 {
   "name": "perifericos-tarve",
-  "version": "0.3.0",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "tarve run src/main.tsx --runtime bun",
     "dev:node": "tarve run src/main.tsx --runtime node",
-    "build": "tarve build src/main.tsx --runtime txiki --native-features core --outfile dist/Perifericos.exe",
+    "build": "bun scripts/build-release.ts build",
+    "release": "bun scripts/build-release.ts release",
     "check": "tsc --noEmit",
     "test": "bun test tests"
   },
@@ -14,7 +15,7 @@
   "devDependencies": { "@types/bun": "^1.4.2", "@types/node": "^26.0.0", "typescript": "^7.0.2" },
   "tarve": {
     "name": "Periféricos Tarve",
-    "version": "0.3.0",
+    "version": "0.5.1",
     "appId": "Perifericos.Tarve",
     "description": "Controle de mouses e headsets"
   }
