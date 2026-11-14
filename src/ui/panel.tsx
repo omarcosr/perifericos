@@ -466,7 +466,7 @@ export function Panel({ state, actions, width = 672, height = 704 }: {
   const updateData = state.updates;
   const updateAvailable = hasUpdate(updateData?.view);
 
-  return <Window title="Periféricos Tarve" width={width} height={height} minWidth={464} minHeight={504} position="center"
+  return <Window title="Periféricos" width={width} height={height} minWidth={464} minHeight={504} position="center"
     theme={theme} onCloseRequest={event => { event.preventDefault(); actions.close(); }}>
     <TitleBar height={56} appearance={state.dark ? "dark" : "light"} buttonStyle={{ width: compact ? 32 : 40 }}
       actions={<Row align="center" gap={4}>

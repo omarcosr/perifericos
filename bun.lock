@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "perifericos-tarve",
+      "name": "perifericos",
       "dependencies": {
         "@tarve/core": "0.12.0",
       },
