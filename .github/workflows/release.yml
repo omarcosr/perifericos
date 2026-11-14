@@ -1,0 +1,123 @@
+name: Publicar versão
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+concurrency:
+  group: perifericos-release
+  queue: max
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.repository == 'omarcosr/perifericos-tarve' && github.ref == 'refs/heads/main'
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Verificar versão
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          $stableVersion = '\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\z'
+          if ($version -cnotmatch $stableVersion) { throw 'Use uma versão estável major.minor.patch no package.json.' }
+          $tag = "v$version"
+          $draft = $null
+          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --paginate --jq '.[] | {tag_name,draft,prerelease,target_commitish}'
+          foreach ($line in $releases) {
+            $release = $line | ConvertFrom-Json
+            if ($release.tag_name -ceq $tag -and $release.draft) { $draft = $release }
+            if ($release.draft) { continue }
+            if ($release.tag_name -ceq $tag) {
+              Write-Host "A release $tag já foi publicada."
+              return
+            }
+            if (!$release.prerelease -and $release.tag_name -clike 'v*') {
+              $publishedVersion = $release.tag_name.Substring(1)
+              if ($publishedVersion -cmatch $stableVersion -and [version]$publishedVersion -gt [version]$version) {
+                Write-Host "A release $($release.tag_name) é mais nova que $tag."
+                return
+              }
+            }
+          }
+          if ($draft -and $draft.target_commitish -ne $env:GITHUB_SHA) {
+            throw "Já existe um rascunho de $tag para outro commit. Reexecute o workflow do commit original."
+          }
+          $refs = gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/$tag" | ConvertFrom-Json
+          if ($refs.ref -ccontains "refs/tags/$tag") {
+            $commit = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs/tags/$tag" --jq '.sha'
+            if ($commit -ne $env:GITHUB_SHA) { throw "A tag $tag aponta para outro commit." }
+          }
+          "number=$version", "tag=$tag", 'publish=true', "draft=$([bool]$draft)".ToLowerInvariant() >> $env:GITHUB_OUTPUT
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: steps.version.outputs.publish == 'true'
+        with:
+          bun-version: '1.4.2'
+
+      - name: Instalar txiki.js
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP txiki.zip
+          Invoke-WebRequest -Uri 'https://github.com/saghul/txiki.js/releases/download/v26.6.0/txiki-windows-x86_64.zip' -OutFile $archive
+          $expected = '1f37d197e468e212d02d7306b458bb35ca0a69f64eea922f50ee242695e15986'
+          if ((Get-FileHash -LiteralPath $archive).Hash -ine $expected) { throw 'SHA-256 inválido no txiki.js.' }
+          $folder = Join-Path $env:RUNNER_TEMP txiki
+          Expand-Archive -LiteralPath $archive -DestinationPath $folder
+          $runtime = @(Get-ChildItem -LiteralPath $folder -Recurse -File -Filter tjs.exe)
+          if ($runtime.Length -ne 1) { throw 'O arquivo do txiki.js deve conter um tjs.exe.' }
+          "TARVE_TXIKI=$($runtime[0].FullName)" >> $env:GITHUB_ENV
+
+      - name: Instalar dependências e rodar testes
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          bun install --frozen-lockfile
+          bun run check
+          bun run test
+
+      - name: Gerar arquivos assinados
+        if: steps.version.outputs.publish == 'true'
+        env:
+          TARVE_UPDATE_PRIVATE_KEY: ${{ secrets.TARVE_UPDATE_PRIVATE_KEY }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          if (!$env:TARVE_UPDATE_PRIVATE_KEY) { throw 'Configure o secret TARVE_UPDATE_PRIVATE_KEY no repositório.' }
+          bun run release
+
+      - name: Publicar no GitHub Releases
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.number }}
+          TAG: ${{ steps.version.outputs.tag }}
+          DRAFT_EXISTS: ${{ steps.version.outputs.draft }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $version = $env:VERSION
+          $tag = $env:TAG
+          $folder = "releases/$version"
+          $files = @(
+            "$folder/latest.json"
+            "$folder/Perifericos-$version-win32-x64-txiki.tarve"
+            "$folder/Perifericos-$version-win32-x64.exe"
+          )
+          foreach ($file in $files) { $null = Get-Item -LiteralPath $file }
+          if ($env:DRAFT_EXISTS -ne 'true') {
+            gh release create $tag --draft --target $env:GITHUB_SHA --title "Periféricos Tarve $version" --generate-notes
+          }
+          gh release upload $tag @files --clobber
+          gh release edit $tag --draft=false --latest

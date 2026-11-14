@@ -85,8 +85,7 @@ const actions: PanelActions = {
   applyMouse(kind, value) { events.push(`${kind}:${value}`); },
   showUpdates() {
     state.updates!.open = true;
-    state.updates!.view = { status: "checking" };
-    events.push("check-update");
+    events.push("open-updates");
     render.app.update();
   },
   closeUpdates() { state.updates!.open = false; render.app.update(); },
@@ -280,15 +279,27 @@ async function verifyControls(): Promise<void> {
 }
 
 async function verifyUpdates(): Promise<void> {
+  const absent = async () => assert(!(await render.inspect()).nodes.some(node => node.id === "open-updates"));
+  await absent();
+  for (const status of ["checking", "current", "unpublished"] as const) {
+    state.updates!.view = { status };
+    render.app.update();
+    await render.waitForIdle();
+    await absent();
+  }
+  showAvailableUpdate();
+  await locate("open-updates").waitFor();
+  await render.capture(resolve(folder, `${name}-botao.png`));
   await locate("open-updates").press("Space");
   await locate("app-updates-content").waitFor();
-  assert.equal((await locate("update-status").node()).text, "Buscando no GitHub…");
-  assert.deepEqual(events, ["check-update"]);
-  state.updates!.view = { status: "unpublished" };
+  assert.equal((await locate("update-status").node()).text, "Versão 0.5.1 disponível");
+  assert.deepEqual(events, ["open-updates"]);
+  const available = state.updates!.view;
+  assert(available.status === "available");
+  state.updates!.view = { status: "error", message: "Falha ao baixar a atualização.", update: available.update };
   render.app.update();
   await locate("check-update").waitFor();
   verifyLayout(await render.inspect());
-  await render.capture(resolve(folder, `${name}-sem-release.png`));
   await locate("check-update").click();
   await locate("install-update").waitFor();
   assert.equal((await locate("update-status").node()).text, "Versão 0.5.1 disponível");
@@ -309,6 +320,7 @@ async function verifyUpdates(): Promise<void> {
   render.app.update();
   await locate("close-updates").click();
   await wait(() => !state.updates!.open);
+  await absent();
   verifyLayout(await render.inspect());
 }
 

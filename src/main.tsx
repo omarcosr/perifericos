@@ -1,6 +1,6 @@
-import { createApp, requestSingleInstance, type AppHandle, type TrayHandle } from "@tarve/core";
+import { createApp, requestSingleInstance, type AppHandle, type TrayHandle, type TrayMenuItem } from "@tarve/core";
 import { spawn } from "node:child_process";
-import { AppUpdates } from "./app-updates";
+import { AppUpdates, hasUpdate } from "./app-updates";
 import { hs80, mouseModels } from "./devices/catalog";
 import { HeadsetController } from "./devices/headset-controller";
 import { MouseController } from "./devices/mouse-controller";
@@ -13,6 +13,7 @@ import { packaged, setStartup, startupEnabled } from "./win/startup";
 import { delay } from "./win/ffi";
 
 const APP_ID = "Perifericos.Tarve";
+const updateCheckInterval = 6 * 60 * 60 * 1000;
 
 async function main(): Promise<void> {
   const instance = await requestSingleInstance({ id: APP_ID });
@@ -24,6 +25,7 @@ async function main(): Promise<void> {
   let tray: TrayHandle | undefined;
   let mouseIcon: ReturnType<typeof createMouseBatteryIcon>;
   let trayAvailable = false;
+  let updateTimer: ReturnType<typeof setInterval> | undefined;
   let exit: Promise<void> | undefined;
   let dpiEdited = false;
   let rateEdited = false;
@@ -41,7 +43,10 @@ async function main(): Promise<void> {
   };
   const draw = () => { if (state.visible && !exit) app?.update(); };
   const updates = new AppUpdates(view => {
-    if (state.updates) state.updates.view = view;
+    if (!state.updates) return;
+    const updateWasAvailable = hasUpdate(state.updates.view);
+    state.updates.view = view;
+    if (updateWasAvailable !== hasUpdate(view)) tray?.update({ menu: trayMenu() });
     draw();
   });
   if (packagedApp) {
@@ -100,11 +105,25 @@ async function main(): Promise<void> {
     app?.activate();
   }
 
-  function openUpdates(): void {
+  function openUpdates(force = false): void {
     if (!state.updates || state.updates.open || exit) return;
+    const available = hasUpdate(state.updates.view);
+    if (!available && !force) return;
     state.updates.open = true;
-    void updates.checkRemote();
+    if (!available) void updates.checkRemote();
     draw();
+  }
+
+  function trayMenu(): TrayMenuItem[] {
+    const menu: TrayMenuItem[] = [
+      { id: "show", label: "Abrir painel", onSelect: () => show() },
+      { id: "mouse", label: "Abrir aba Mouse", onSelect: () => show("mouse") },
+    ];
+    if (hasUpdate(state.updates?.view)) {
+      menu.push({ id: "updates", label: "Atualização disponível", onSelect: () => { openUpdates(); show(); } });
+    }
+    menu.push({ id: "quit", label: "Encerrar controle", onSelect: () => { void quit(); } });
+    return menu;
   }
 
   function hide(): void {
@@ -117,6 +136,7 @@ async function main(): Promise<void> {
 
   function shutdown(): Promise<void> {
     return exit ??= (async () => {
+      if (updateTimer) clearInterval(updateTimer);
       updates.stop();
       await Promise.allSettled([headset.stop(), mouse.stop()]);
       stopSound();
@@ -164,7 +184,7 @@ async function main(): Promise<void> {
     editDpi(value) { if (/^\d{0,5}$/.test(value)) { state.dpi = value; dpiEdited = true; draw(); } },
     selectRate(value) { state.rate = value; rateEdited = true; draw(); },
     applyMouse: (kind, value) => mouse.apply(kind, value),
-    showUpdates: openUpdates,
+    showUpdates: () => openUpdates(),
     closeUpdates() {
       if (!state.updates) return;
       state.updates.open = false;
@@ -184,7 +204,6 @@ async function main(): Promise<void> {
 
   try {
     app = createApp(() => <Panel state={state} actions={actions} />, {
-      appIdentity: { id: APP_ID, name: "Periféricos Tarve" },
       headless: !state.visible,
       lowPower: true,
       renderer: "cpu",
@@ -194,7 +213,7 @@ async function main(): Promise<void> {
       if (launch.args.includes("--stop")) void quit();
       else if (launch.args.includes("--hide")) hide();
       else if (!launch.args.includes("--run")) {
-        if (launch.args.includes("--updates")) openUpdates();
+        if (launch.args.includes("--updates")) openUpdates(true);
         show(launch.args.includes("--mouse") ? "mouse" : state.tab);
       }
     });
@@ -203,12 +222,7 @@ async function main(): Promise<void> {
       onAvailability({ available }) {
         trayAvailable = available;
       },
-      menu: [
-        { id: "show", label: "Abrir painel", onSelect: () => show() },
-        { id: "mouse", label: "Abrir aba Mouse", onSelect: () => show("mouse") },
-        ...(state.updates ? [{ id: "updates", label: "Atualizações", onSelect: () => { openUpdates(); show(); } }] : []),
-        { id: "quit", label: "Encerrar controle", onSelect: () => { void quit(); } },
-      ],
+      menu: trayMenu(),
     });
     await app.ready;
     if (!state.visible) app.hide();
@@ -217,7 +231,12 @@ async function main(): Promise<void> {
       headset.start();
       mouse.setForeground(state.visible && state.tab === "mouse");
       mouse.start();
-      if (state.visible && state.updates?.open && state.updates.view.status === "idle") void updates.checkRemote();
+      if (state.updates) {
+        if (!state.updates.open || state.updates.view.status === "idle") void updates.checkRemote(!state.updates.open);
+        updateTimer = setInterval(() => {
+          if (!state.updates?.open) void updates.checkRemote(true);
+        }, updateCheckInterval);
+      }
       setTimeout(() => {
         if (exit) return;
         try { state.startup = startupEnabled(); draw(); } catch { /* The user can retry from the panel. */ }

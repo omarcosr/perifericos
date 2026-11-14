@@ -13,8 +13,8 @@ const { values, positionals: [command] } = parseArgs({
   options: { out: { type: "string" }, notes: { type: "string" }, "base-url": { type: "string" } },
 });
 if (command !== "build" && command !== "release") throw new Error("Use build ou release.");
-const { name, version } = manifest.tarve;
-if (manifest.version !== version) throw new Error("Alinhe as duas versões no package.json.");
+const { version } = manifest;
+const { name } = manifest.tarve;
 const localKey = join(process.env.LOCALAPPDATA ?? ".", "PerifericosTarve", "assinatura", "tarve-update.key");
 const key = process.env.TARVE_UPDATE_PRIVATE_KEY || (existsSync(localKey) ? localKey : undefined);
 if (!key) throw new Error("A chave de assinatura do Periféricos não foi encontrada.");
@@ -38,7 +38,7 @@ function tarve(...args: string[]): void {
 }
 
 if (command === "build") {
-  tarve("build", ...common, "--packs", "--outfile", join(values.out ?? "dist", "Perifericos.exe"));
+  tarve("build", ...common, "--packs", "--version", version, "--outfile", join(values.out ?? "dist", "Perifericos.exe"));
 } else {
   const out = resolve(root, values.out ?? join("releases", version));
   const staging = mkdtempSync(join(tmpdir(), "perifericos-release-"));
@@ -46,7 +46,7 @@ if (command === "build") {
   const host = join(staging, "Perifericos.exe");
   const pack = join(staging, "Perifericos.tarve");
   try {
-    tarve("build", ...common, "--packs", "--outfile", host);
+    tarve("build", ...common, "--packs", "--version", version, "--outfile", host);
     tarve("pack", ...common, "--version", version, "--outfile", pack);
     tarve("release", "--name", name, "--version", version, "--artifact", `win32-x64=${host}`,
       "--pack", pack, "--public-key", updatePublicKey, "--out", release,

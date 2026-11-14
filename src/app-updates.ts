@@ -6,7 +6,11 @@ export type UpdateView =
   | { status: "idle" | "checking" | "unpublished" | "current" | "restarting" | "installed" }
   | { status: "available"; update: Update }
   | { status: "downloading"; percent: number }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; update?: Update };
+
+export function hasUpdate(view: UpdateView | undefined): boolean {
+  return view?.status === "available" || (view?.status === "error" && !!view.update);
+}
 
 class ManifestUnavailable extends Error {}
 
@@ -50,16 +54,17 @@ export class AppUpdates {
     }
   }
 
-  async checkRemote(): Promise<void> {
+  async checkRemote(background = false): Promise<void> {
     if (this.stopped || this.operation || this.view.status === "restarting") return;
-    this.show({ status: "checking" });
+    const knownUpdate = this.view.status === "available" || this.view.status === "error" ? this.view.update : undefined;
+    if (!background) this.show({ status: "checking" });
     try {
       await this.run(15_000, async signal => {
         const update = await checkForUpdate({ url: this.url, publicKey: updatePublicKey, fetch: fetchManifest, signal });
         if (this.stopped) return;
         if (!update) { this.show({ status: "current" }); return; }
         if (!canInstallUpdate(update)) {
-          this.show({ status: "error", message: "A pasta de instalação está sem permissão de gravação." });
+          this.show({ status: "error", message: "A pasta de instalação está sem permissão de gravação.", update });
           return;
         }
         this.show({ status: "available", update });
@@ -68,7 +73,9 @@ export class AppUpdates {
       if (this.stopped) return;
       if (error instanceof ManifestUnavailable) { this.show({ status: "unpublished" }); return; }
       console.error("Consulta de atualização:", error);
-      this.show({ status: "error", message: "Falha ao consultar ou validar a versão no GitHub. Tente novamente." });
+      if (!background || !knownUpdate) {
+        this.show({ status: "error", message: "Falha ao consultar ou validar a versão no GitHub. Tente novamente.", update: knownUpdate });
+      }
     }
   }
 
@@ -96,7 +103,7 @@ export class AppUpdates {
       });
     } catch (error) {
       console.error("Instalação de atualização:", error);
-      if (!this.stopped) this.show({ status: "error", message: "Falha ao baixar, verificar ou instalar a versão. Consulte o GitHub novamente." });
+      if (!this.stopped) this.show({ status: "error", message: "Falha ao baixar, verificar ou instalar a versão. Consulte o GitHub novamente.", update });
     } finally {
       if (file && !installed) {
         try { rmSync(file, { force: true }); } catch { /* Tarve will reuse the temporary path on retry. */ }

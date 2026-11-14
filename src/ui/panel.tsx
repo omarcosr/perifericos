@@ -5,9 +5,10 @@ import {
 import type { HeadsetState } from "../devices/headset-controller";
 import { validDpi, type MouseState } from "../devices/mouse-state";
 import { hs80, mchoseK7, mouseModels, viper, type MouseModelId } from "../devices/catalog";
-import type { UpdateView } from "../app-updates";
+import { hasUpdate, type UpdateView } from "../app-updates";
 import { sounds, type Preferences } from "../win/preferences";
 import { panelTheme } from "./panel-theme";
+import brandIcon from "./assets/app-icon.png" with { type: "file" };
 import headsetPhoto from "./assets/hs80-max.webp" with { type: "file" };
 import mousePhoto from "./assets/viper-v3-pro.webp" with { type: "file" };
 import k7Photo from "./assets/mchose-k7-ultra.webp" with { type: "file" };
@@ -71,7 +72,6 @@ const soundOptions = sounds.map((label, i) => ({ label, value: String(i) }));
 const formatNumber = (value: number) => String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
 const glyphs = {
-  app: [["path", { d: "M4 17V7m8 13V4m8 13V7M2 13h4m4-5h4m4 6h4" }]],
   headset: [["path", { d: "M3 14v-2a9 9 0 0 1 18 0v2m-18 0h3a2 2 0 0 1 2 2v3a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2zm18 0h-3a2 2 0 0 0-2 2v3a1 1 0 0 0 1 1h2a2 2 0 0 0 2-2z" }]],
   mouse: [["rect", { x: 6, y: 3, width: 12, height: 18, rx: 6 }], ["path", { d: "M12 7v3" }]],
   battery: [["rect", { x: 2.5, y: 7, width: 17, height: 10, rx: 2 }], ["path", { d: "M22 10v4M6 12h5" }]],
@@ -453,18 +453,16 @@ export function Panel({ state, actions, width = 672, height = 704 }: {
     theme={theme} onCloseRequest={event => { event.preventDefault(); actions.close(); }}>
     <TitleBar height={56} appearance={state.dark ? "dark" : "light"} buttonStyle={{ width: compact ? 32 : 40 }}
       actions={<Row align="center" gap={4}>
-        {updateData ? <Button id="open-updates" variant={updateData.open ? "secondary" : "ghost"} size="sm"
-          control={{ role: "button", label: "Atualizações" }} onClick={actions.showUpdates}
+        {hasUpdate(updateData?.view) ? <Button id="open-updates" variant="secondary" size="sm"
+          control={{ role: "button", label: "Atualização disponível" }} onClick={actions.showUpdates}
           style={{ width: 32, height: 32, radius: 8, padding: 0, shrink: 0 }}>
-          <Icon iconNode={glyphs.update} size={16} color={updateData.open ? accent : muted} />
+          <Icon iconNode={glyphs.update} size={16} color={accent} />
         </Button> : null}
         <Navigation tab={state.tab} select={actions.tab} />
       </Row>}
       style={{ background: "var(--card)", padding: { left: titleInset } }}>
       <Row id="panel-brand" gap={8} align="center">
-        <Row align="center" justify="center" style={{ width: 32, height: 32, radius: 8, background: secondary, shrink: 0 }}>
-          <Icon iconNode={glyphs.app} size={16} color={accent} />
-        </Row>
+        <Image src={brandIcon} style={{ width: 32, height: 32, shrink: 0 }} />
         <Text size={14} weight={640}>Periféricos</Text>
       </Row>
     </TitleBar>
