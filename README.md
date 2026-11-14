@@ -2,7 +2,7 @@
 
 Controle o microfone e os LEDs do seu headset, ajuste o DPI e a taxa de polling do mouse e acompanhe a bateria dos dois perto do relógio do Windows.
 
-[Baixar para Windows x64](https://github.com/omarcosr/perifericos-tarve/releases/latest) · [Dispositivos compatíveis](#dispositivos-compatíveis) · [Desenvolvimento](#desenvolvimento)
+[Baixar para Windows x64](https://github.com/omarcosr/perifericos/releases/latest) · [Dispositivos compatíveis](#dispositivos-compatíveis) · [Desenvolvimento](#desenvolvimento)
 
 | Headset · tema escuro | Mouse · tema claro |
 | --- | --- |
@@ -96,7 +96,7 @@ O workflow precisa do secret `TARVE_UPDATE_PRIVATE_KEY` com a chave privada corr
 
 ```powershell
 $keyPath = Join-Path $env:LOCALAPPDATA 'PerifericosTarve\assinatura\tarve-update.key'
-Get-Content -LiteralPath $keyPath -Raw | gh secret set TARVE_UPDATE_PRIVATE_KEY --repo omarcosr/perifericos-tarve
+Get-Content -LiteralPath $keyPath -Raw | gh secret set TARVE_UPDATE_PRIVATE_KEY --repo omarcosr/perifericos
 ```
 
 Guarde a chave privada fora do Git e reutilize-a nas próximas versões para que os apps instalados aceitem as atualizações. A consulta do app usa o endereço público das releases do repositório. [Secrets do GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)

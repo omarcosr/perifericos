@@ -17,7 +17,8 @@ permissions:
 
 jobs:
   release:
-    if: github.repository == 'omarcosr/perifericos-tarve' && github.ref == 'refs/heads/main'
+    # The repository ID stays the same when its name changes.
+    if: github.repository_id == '1456897646' && github.ref == 'refs/heads/main'
     runs-on: windows-2025
     timeout-minutes: 15
     steps:
