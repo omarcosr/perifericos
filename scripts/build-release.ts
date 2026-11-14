@@ -1,4 +1,4 @@
-import { verifyUpdateManifest, type SignedUpdateManifest, type UpdateManifest } from "@tarve/core";
+import { verifyUpdateManifest, type SignedUpdateManifest } from "@tarve/core";
 import { spawnSync } from "node:child_process";
 import { createPrivateKey, createPublicKey, sign } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -38,14 +38,6 @@ function tarve(...args: string[]): void {
   if (result.status !== 0) throw new Error(`tarve ${args[0]} retornou ${result.status ?? "um erro"}.`);
 }
 
-function writeSignedManifest(path: string, update: UpdateManifest): void {
-  const payload = JSON.stringify(update);
-  const signature = sign(null, Buffer.from(payload, "utf8"), privateKey).toString("base64");
-  const signed = { payload, signature };
-  verifyUpdateManifest(signed, updatePublicKey);
-  writeFileSync(path, JSON.stringify(signed, null, 2) + "\n");
-}
-
 function installer(host: string, out: string, staging: string): void {
   const resources = NtExecutableResource.from(NtExecutable.from(readFileSync(host)));
   const group = Resource.IconGroupEntry.fromEntries(resources.entries)[0];
@@ -80,7 +72,7 @@ if (command === "build") {
       "--pack", pack, "--public-key", updatePublicKey, "--out", release,
       ...(values.notes ? ["--notes", values.notes] : []), ...(values["base-url"] ? ["--base-url", values["base-url"]] : []));
 
-    const envelope = JSON.parse(readFileSync(join(release, "latest.json"), "utf8")) as SignedUpdateManifest;
+    const envelope = JSON.parse(readFileSync(join(release, updateManifestFile), "utf8")) as SignedUpdateManifest;
     const update = verifyUpdateManifest(envelope, updatePublicKey);
     const artifact = update.platforms["win32-x64"];
     const incremental = update.packs?.["win32-x64"]?.txiki;
@@ -90,15 +82,15 @@ if (command === "build") {
     const packUrlName = incremental.url.slice(incremental.url.lastIndexOf("/") + 1);
     // GitHub normalizes asset names. The pack still records the app name internally.
     incremental.url = incremental.url.slice(0, -packUrlName.length) + packName;
+    const payload = JSON.stringify(update);
+    const signature = sign(null, Buffer.from(payload, "utf8"), privateKey).toString("base64");
+    const signed = { payload, signature };
+    verifyUpdateManifest(signed, updatePublicKey);
     mkdirSync(out, { recursive: true });
     installer(host, out, staging);
     copyFileSync(join(release, exeName), join(out, exeName));
     copyFileSync(pack, join(out, packName));
-    writeSignedManifest(join(out, updateManifestFile), update);
-    // Older hosts check latest.json and can only load packs with the old app name.
-    writeSignedManifest(join(out, "latest.json"), {
-      version: update.version, pubDate: update.pubDate, notes: update.notes, platforms: update.platforms,
-    });
+    writeFileSync(join(out, updateManifestFile), JSON.stringify(signed, null, 2) + "\n");
     console.log(`Release pronta em ${out}`);
   } finally {
     const stagePath = resolve(staging);

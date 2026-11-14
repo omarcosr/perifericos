@@ -38,7 +38,7 @@ O app consulta as releases públicas do GitHub ao iniciar e a cada seis horas. Q
 
 O atualizador verifica a assinatura do manifesto e o SHA-256 do arquivo. Quando o runtime é compatível, baixa apenas o pacote incremental. Atualizações que exigem uma base diferente baixam o executável completo.
 
-Ao atualizar da 0.5.3 ou anterior, o app baixa o executável completo com o novo nome. Se você usa uma instalação existente, execute o novo instalador para atualizar também o atalho do menu Iniciar e a entrada em **Aplicativos instalados**.
+Se você usa a versão 0.5.4 ou anterior, execute o instalador da versão atual uma vez para voltar a receber atualizações pelo app. [Release mais recente](https://github.com/omarcosr/perifericos/releases/latest)
 
 ## Desenvolvimento
 
@@ -87,7 +87,7 @@ O [catálogo HID](src/devices/catalog.ts) concentra os modelos e as interfaces r
 
 ## Publicação
 
-Altere `version` no `package.json` e envie a mudança à `main`. O workflow **Publicar versão** roda os testes e envia o instalador, o executável, o pacote `.tarve` e os manifestos assinados à release antes de publicá-la. [Workflow de publicação](.github/workflows/release.yml)
+Altere `version` no `package.json` e envie a mudança à `main`. O workflow **Publicar versão** roda os testes e envia o instalador, o executável, o pacote `.tarve` e o manifesto assinado `latest.json` à release antes de publicá-la. [Workflow de publicação](.github/workflows/release.yml)
 
 Para publicar a versão atual, abra **Actions → Publicar versão → Run workflow** e escolha a `main`. Se um envio parar no meio, reexecute o workflow do commit original para concluir o rascunho.
 
@@ -109,7 +109,7 @@ Para gerar os arquivos em `releases/<versão>`, instale o Inno Setup 6.7.4 e apo
 bun run release --notes 'Resumo da versão'
 ```
 
-As versões a partir da 0.5.4 usam `latest-perifericos.json`. As versões anteriores consultam `latest.json` e recebem o executável completo. Para testar com outro servidor, defina `PERIFERICOS_UPDATE_URL` com o endereço do manifesto. Sirva os arquivos no mesmo diretório ou informe o endereço dos artefatos com `--base-url` ao gerar a release.
+Para testar com outro servidor, defina `PERIFERICOS_UPDATE_URL` com o endereço do manifesto. Sirva os arquivos no mesmo diretório ou informe o endereço dos artefatos com `--base-url` ao gerar a release.
 
 </details>
 

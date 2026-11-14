@@ -127,7 +127,6 @@ jobs:
           $folder = "releases/$version"
           $files = @(
             "$folder/latest.json"
-            "$folder/latest-perifericos.json"
             "$folder/Perifericos-$version-win32-x64-txiki.tarve"
             "$folder/Perifericos-$version-win32-x64.exe"
             "$folder/Perifericos-Setup-$version-win32-x64.exe"
