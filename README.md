@@ -1,72 +1,114 @@
 # Periféricos Tarve
 
-Abra `dist/Perifericos.exe` no Windows x64. Esta versão usa Tarve 0.12.0 com txiki.js e QuickJS-ng. O código do app está em TypeScript e TSX. As chamadas a HID e Core Audio passam pela FFI para as bibliotecas do Windows.
+Controle o microfone e os LEDs do seu headset, ajuste o DPI e a taxa de polling do mouse e acompanhe a bateria dos dois perto do relógio do Windows.
 
-- **Headset** controla os LEDs, sincroniza o mudo da haste com o Windows, lê a bateria e o estado de carga e reproduz os avisos escolhidos para ativar e silenciar o microfone do Corsair HS80 MAX.
-- **Mouse** lê automaticamente conexão, bateria, carga, DPI e polling do Razer Viper V3 Pro e do MCHOSE K7 Ultra original. Quando os dois modelos são detectados, escolha qual configurar em **Dispositivo**. Use o slider ou digite o valor e pressione **Aplicar DPI**. Os ajustes são relidos do mouse depois do envio.
-- **Bandeja** mostra a porcentagem do HS80 MAX em azul e a do mouse selecionado em verde. Carga baixa aparece em âmbar, e um traço indica bateria sem leitura. Passe o cursor sobre o ícone para ver o nome e se o dispositivo está carregando. Se o Windows guardar os indicadores em `^`, arraste-os de lá para perto do relógio.
-- **Menu do indicador azul** reabre o painel, oferece a instalação quando há uma atualização e encerra o controle. `--run` inicia na bandeja, `--mouse` abre a aba Mouse, `--updates` abre Atualizações, `--hide` oculta o painel e `--stop` encerra a instância.
+[Baixar para Windows x64](https://github.com/omarcosr/perifericos-tarve/releases/latest) · [Dispositivos compatíveis](#dispositivos-compatíveis) · [Desenvolvimento](#desenvolvimento)
 
-Para usar o controle do HS80 nesta versão, encerre o controlador em C pelo ícone perto do relógio. Quando o iCUE está aberto, o Tarve pausa o controle do headset. Para transferir a inicialização com o Windows, desative a opção na versão em C e ative-a pelo executável Tarve. A tarefa do Tarve inicia o app 15 segundos após entrar na conta. As preferências do Tarve ficam em `%LOCALAPPDATA%\PerifericosTarve\preferencias.ini`.
+| Headset · tema escuro | Mouse · tema claro |
+| --- | --- |
+| ![Corsair HS80 MAX com os controles do microfone e dos LEDs](docs/media/headset.webp) | ![MCHOSE K7 Ultra carregando, com controles de DPI e polling](docs/media/mouse.webp) |
 
-Na primeira execução, `PERIFERICOS_IMPORT_INI` pode apontar para o `hs80.ini` da versão em C para trazer LEDs e sons.
+## Começar
 
-O driver do K7 Ultra original reconhece o receptor 2,4 GHz `3837:1001` e o cabo USB `3837:4150`. A leitura foi testada em ambas as conexões com o firmware 5.28.5.0. Na versão 0.4.1, o DPI gravado pelo painel permaneceu no mouse após desligá-lo e religá-lo no modo 2,4 GHz. [Capturas do K7 Ultra](https://github.com/aipno/mchose-linux/blob/main/docs/PROTOCOL.md)
+1. Baixe o `Perifericos-<versão>-win32-x64.exe` na seção **Assets** da release mais recente.
+2. Salve o executável em uma pasta de sua preferência e abra-o. As dependências de execução vêm no próprio arquivo.
+3. Conecte o receptor do headset ou o mouse compatível e selecione **Headset** ou **Mouse** no painel.
+
+Se você compilou o projeto localmente, abra `dist/Perifericos.exe`.
+
+A porcentagem do headset aparece em **azul** na bandeja do sistema e a do mouse selecionado, em **verde**. Passe o cursor sobre o indicador para conferir o estado de carga. Se os ícones estiverem no menu oculto **^**, arraste-os para perto do relógio.
+
+Para manter o controle em segundo plano ao entrar na conta, ative **Iniciar com o Windows** na aba **Headset**. O app inicia na bandeja cerca de 15 segundos após o login.
+
+## Dispositivos compatíveis
+
+| Dispositivo | Conexão | Controles |
+| --- | --- | --- |
+| **Corsair HS80 MAX** | Receptor USB de 2,4 GHz | Bateria, estado de carga, LEDs dos logotipos e da ponta do microfone, mudo pela haste e sons ao ativar e silenciar. |
+| **Razer Viper V3 Pro** | Cabo USB ou receptor de 2,4 GHz | Conexão, bateria, estado de carga, DPI e taxa de polling. |
+| **MCHOSE K7 Ultra original** | Cabo USB ou receptor de 2,4 GHz | Conexão, bateria, estado de carga, DPI e taxa de polling. |
+
+**Headset.** Feche o iCUE para liberar o controle do HS80 MAX. Se estiver migrando do controlador antigo em C/CUI, encerre-o pela bandeja e desative a inicialização dele antes de ativar a do Periféricos Tarve.
+
+**Mouse.** Se os dois modelos estiverem conectados, use o seletor **Dispositivo**. Ajuste a sensibilidade pelo slider ou pelo campo numérico e confirme em **Aplicar DPI**. Para mudar o polling, escolha a frequência e clique em **Aplicar taxa**. O painel relê os valores do mouse após cada ajuste.
 
 ## Atualizações
 
-A partir da v0.5.2, o app consulta a release pública mais recente do GitHub ao iniciar e a cada seis horas. O ícone de download na barra de título e a opção **Atualização disponível** na bandeja aparecem quando há uma versão mais nova. Abra o popup, clique em **Instalar e reiniciar** e acompanhe o download. [Releases do Periféricos Tarve](https://github.com/omarcosr/perifericos-tarve/releases)
+O app consulta as releases públicas do GitHub ao iniciar e a cada seis horas. Quando encontra uma versão mais recente, exibe um ícone de download na barra de título e a opção **Atualização disponível** na bandeja. Abra o popup e clique em **Instalar e reiniciar** para acompanhar o download.
 
-O Tarve verifica a assinatura do manifesto, o tamanho e o SHA-256 do arquivo baixado. Após reiniciar, ele carrega o pacote incremental `.tarve` quando o runtime instalado é compatível. Uma versão que exija outro runtime ou outra biblioteca nativa usa o executável completo da release.
-
-## Medição neste PC
-
-Amostras de seis segundos por estado, com o HS80 MAX em uso pelo controlador correspondente. A medição do Tarve foi feita na versão 0.1.0. A CPU é normalizada pelo total de processadores lógicos. A RAM residente e a memória privada são indicadores diferentes.
-
-| Estado | RAM residente | Memória privada | CPU total |
-| --- | ---: | ---: | ---: |
-| C/CUI na bandeja | 14,87 MiB | 2,10 MiB | 0,03% |
-| Tarve aberto | 52,81 MiB | 92,48 MiB | 0,04% |
-| Tarve na bandeja | 42,22 MiB | 66,62 MiB | 0,04% |
+O atualizador verifica a assinatura do manifesto e o SHA-256 do arquivo. Quando o runtime é compatível, baixa apenas o pacote incremental. Atualizações que exigem uma base diferente baixam o executável completo.
 
 ## Desenvolvimento
 
-Execute estes comandos na pasta do projeto com Bun e txiki.js instalados. O modo Node usa Node.js 26.10 ou posterior com FFI experimental.
+O painel usa TypeScript, TSX e Tarve. A versão distribuída usa txiki.js com QuickJS-ng. A comunicação com os dispositivos e o microfone passa pelas APIs HID e Core Audio do Windows.
+
+Com Bun instalado no Windows x64, execute os comandos abaixo na raiz do projeto.
 
 ```powershell
-bun install
+bun install --frozen-lockfile
 bun run check
 bun run test
 bun run dev
-bun run dev:node
+```
+
+Para gerar `dist/Perifericos.exe`, instale também o txiki.js 26.6.0 e deixe o `tjs` no PATH ou aponte `TARVE_TXIKI` para o executável. O build usa a chave de assinatura configurada na seção seguinte.
+
+```powershell
 bun run build
 ```
 
-Para reproduzir a revisão visual, rode `bun tests/panel.visual.tsx headset dark normal` ou `bun tests/panel.visual.tsx mouse light compact`. O teste verifica os alinhamentos e gera uma imagem da janela e as coordenadas do layout. Ele usa dados simulados.
+<details>
+<summary>Testes visuais, argumentos e referências do código</summary>
 
-## Publicação de versões
+O teste visual usa dados simulados e salva uma imagem do painel e as coordenadas dos controles.
 
-O workflow **Publicar versão** roda quando `package.json` é alterado em um push na `main`. Altere o campo `version` para a próxima versão estável, por exemplo `0.5.3`. Se ela for nova, o workflow verifica o TypeScript, executa os testes e anexa o executável, o pacote incremental e o manifesto assinado à release. A release é publicada como a mais recente depois que os três arquivos são enviados.
+```powershell
+bun tests/panel.visual.tsx headset dark normal
+bun tests/panel.visual.tsx updates light compact
+```
 
-Para ativar a assinatura no GitHub Actions, cadastre uma vez a chave existente como secret do repositório. Na máquina que guarda a chave, com o GitHub CLI autenticado, rode o seguinte comando. [Secrets do GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)
+O modo `bun run dev:node` usa Node.js 26.10 ou posterior com FFI experimental.
+
+| Argumento | Efeito |
+| --- | --- |
+| `--run` | Inicia na bandeja. |
+| `--mouse` | Abre o painel na aba Mouse. |
+| `--updates` | Abre o popup de atualizações. |
+| `--hide` | Oculta a janela da instância em execução. |
+| `--stop` | Encerra o app. |
+
+As preferências ficam em `%LOCALAPPDATA%\PerifericosTarve\preferencias.ini`. Antes da primeira execução, `PERIFERICOS_IMPORT_INI` pode apontar para o `hs80.ini` do controlador em C/CUI e importar os ajustes de LEDs e sons.
+
+O [catálogo HID](src/devices/catalog.ts) concentra os modelos e as interfaces reconhecidas. O K7 Ultra original usa `3837:1001` no receptor e `3837:4150` no cabo. A leitura foi testada nos dois modos com firmware 5.28.5.0. [Referência do protocolo do K7 Ultra](https://github.com/aipno/mchose-linux/blob/main/docs/PROTOCOL.md)
+
+</details>
+
+## Publicação
+
+Altere `version` no `package.json` e envie a mudança à `main`. O workflow **Publicar versão** roda os testes, envia o executável, o pacote `.tarve` e o `latest.json` assinado a uma release e então a publica. [Workflow de publicação](.github/workflows/release.yml)
+
+Para publicar a versão atual, abra **Actions → Publicar versão → Run workflow** e escolha a `main`. Se um envio parar no meio, reexecute o workflow do commit original para concluir o rascunho.
+
+<details>
+<summary>Configurar a assinatura e gerar uma release local</summary>
+
+O workflow precisa do secret `TARVE_UPDATE_PRIVATE_KEY` com a chave privada correspondente à chave pública do app. Cadastre-o uma vez na máquina que guarda a chave, com o GitHub CLI autenticado.
 
 ```powershell
 $keyPath = Join-Path $env:LOCALAPPDATA 'PerifericosTarve\assinatura\tarve-update.key'
 Get-Content -LiteralPath $keyPath -Raw | gh secret set TARVE_UPDATE_PRIVATE_KEY --repo omarcosr/perifericos-tarve
 ```
 
-Guarde uma cópia protegida da chave fora do Git. Use a mesma chave para manter a compatibilidade com os apps instalados. O repositório precisa estar público para que o app consiga consultar as releases. Para publicar a versão atual ou reexecutar após corrigir a configuração, abra **Actions → Publicar versão** e selecione **Run workflow** na `main`. Se o envio dos arquivos foi interrompido, reexecute o workflow original para concluir o rascunho do mesmo commit.
+Guarde a chave privada fora do Git e reutilize-a nas próximas versões para que os apps instalados aceitem as atualizações. A consulta do app usa o endereço público das releases do repositório. [Secrets do GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)
 
-Para gerar os arquivos localmente, use o comando abaixo. Em outra máquina, defina `TARVE_UPDATE_PRIVATE_KEY` com o caminho da mesma chave ou seu valor em base64.
+Para gerar os três arquivos em `releases/<versão>` localmente, use a chave no caminho acima ou informe seu caminho ou valor em base64 na variável `TARVE_UPDATE_PRIVATE_KEY`.
 
 ```powershell
 bun run release --notes 'Resumo da versão'
 ```
 
-O comando gera os três arquivos em `releases/<versão>`. [Atualizações no Tarve](https://tarve.dev/docs/updates)
+Para testar com outro servidor, defina `PERIFERICOS_UPDATE_URL` com o endereço do manifesto. Sirva os arquivos no mesmo diretório ou informe o endereço dos artefatos com `--base-url` ao gerar a release.
 
-Para testar com outro servidor, defina `PERIFERICOS_UPDATE_URL` com a URL completa do manifesto. Mantenha os artefatos relativos ao endereço do manifesto ou gere a release com `--base-url`.
+</details>
 
-O build distribui um `.exe`. O Tarve extrai sua biblioteca nativa embutida para o cache local na primeira execução e guarda os pacotes instalados no AppData. `src/devices/catalog.ts` define as interfaces HID reconhecidas, e os módulos `hs80.ts`, `viper.ts` e `mchose.ts` concentram os comandos de cada família.
-
-O painel segue o tema claro ou escuro do Windows ao abrir. As imagens incorporadas no executável são dos fabricantes. [Corsair HS80 MAX](https://www.corsair.com/us/en/p/gaming-headsets/ca-9011295-na/hs80-max-wireless-gaming-headset-steel-gray-ca-9011295-na) · [Razer Viper V3 Pro](https://www.razer.com/gaming-mice/razer-viper-v3-pro/RZ01-05120100-R3U1) · [MCHOSE K7 Ultra](https://www.mchose.store/products/mchose-k7-ultra-lightweight-wireless-gaming-mouse)
+Imagens dos dispositivos fornecidas pelos fabricantes. [Corsair](https://www.corsair.com/us/en/p/gaming-headsets/ca-9011295-na/hs80-max-wireless-gaming-headset-steel-gray-ca-9011295-na) · [Razer](https://www.razer.com/gaming-mice/razer-viper-v3-pro/RZ01-05120100-R3U1) · [MCHOSE](https://www.mchose.store/products/mchose-k7-ultra-lightweight-wireless-gaming-mouse)
