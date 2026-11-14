@@ -27,6 +27,8 @@ export interface PanelState {
   startup: boolean;
   startupPending: boolean;
   startupAvailable: boolean;
+  settingsOpen: boolean;
+  startupNotice?: string;
   headsetNotice?: string;
   dpi: string;
   rate: string;
@@ -37,6 +39,8 @@ export interface PanelActions {
   close(): void;
   lightsOff(enabled: boolean): void;
   startup(enabled: boolean): void;
+  showSettings(): void;
+  closeSettings(): void;
   sound(key: "onUnmute" | "onMute", sound: number): void;
   preview(sound: number): void;
   unmute(): void;
@@ -79,6 +83,7 @@ const glyphs = {
   mic: [["rect", { x: 9, y: 3, width: 6, height: 12, rx: 3 }], ["path", { d: "M5 11v1a7 7 0 0 0 14 0v-1M12 19v3m-3 0h6" }]],
   micOff: [["path", { d: "M3 3l18 18M9 9v3a3 3 0 0 0 5 2m1-4V6a3 3 0 0 0-5-2M5 11v1a7 7 0 0 0 12 5m2-5v-1M12 19v3m-3 0h6" }]],
   update: [["path", { d: "M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4" }]],
+  settings: [["path", { d: "M12 3h2l.5 2.2 1.7 1 2.2-.7 2 3.4-1.7 1.5v2.1l1.7 1.5-2 3.4-2.2-.7-1.7 1-.5 2.3h-4l-.5-2.3-1.7-1-2.2.7-2-3.4 1.7-1.5v-2.1L3.6 9l2-3.4 2.2.7 1.7-1L10 3z" }], ["circle", { cx: 12, cy: 11.5, r: 3 }]],
   linkOff: [["path", { d: "M3 3l18 18M9 7l2-2a5 5 0 0 1 7 7l-2 2M8 10l-2 2a5 5 0 0 0 7 7l2-2" }]],
   dpi: [["circle", { cx: 12, cy: 12, r: 7 }], ["path", { d: "M12 2v5m0 10v5M2 12h5m10 0h5" }]],
   polling: [["path", { d: "M2 12h5l3-7 4 14 3-7h5" }]],
@@ -253,14 +258,6 @@ function HeadsetControls({ state, actions, compact }: { state: PanelState; actio
             style={settingsSwitch} />
           <Text size={12} color={muted} style={settingsHint}>Logotipos e luz na ponta do microfone.</Text>
         </Column>
-        <Column padding={settingsRow} style={rowDivider}>
-          <Switch id="startup" label="Iniciar com o Windows" checked={state.startup}
-            style={settingsSwitch}
-            disabled={!state.startupAvailable || state.startupPending} onCheckedChange={actions.startup} />
-          {!state.startupAvailable || state.startupPending ? <Text size={12} color={muted} style={settingsHint}>
-            {state.startupPending ? "Salvando…" : "Disponível no executável da pasta dist."}
-          </Text> : null}
-        </Column>
       </Column>
     </Column>
 
@@ -393,6 +390,25 @@ function Navigation({ tab, select }: { tab: Tab; select: (tab: Tab) => void }) {
   </Row>;
 }
 
+function SettingsDialog({ state, actions }: { state: PanelState; actions: PanelActions }) {
+  return <Dialog id="app-settings" open title="Configurações" width={400} showClose={false}
+    closeOnOverlay={false} onOpenChange={actions.closeSettings} style={{ radius: 16, padding: 24, gap: 16 }}
+    footer={<Button id="close-settings" variant="outline" onClick={actions.closeSettings}
+      style={{ ...fixedButton, height: 40 }}>Fechar</Button>}>
+    <Column gap={4}>
+      <Switch id="startup" label="Iniciar com o Windows" checked={state.startup} style={settingsSwitch}
+        disabled={!state.startupAvailable || state.startupPending} onCheckedChange={actions.startup} />
+      <Text id="startup-help" size={13} color={muted} style={settingsHint}>
+        {state.startupPending ? "Salvando…" : state.startupAvailable
+          ? "Abre na bandeja quando você entra na sua conta." : "Disponível no Periféricos instalado ou no executável compilado."}
+      </Text>
+      {state.startupNotice ? <Text id="startup-notice" size={13} color="var(--destructive-text)" style={settingsHint}>
+        {state.startupNotice}
+      </Text> : null}
+    </Column>
+  </Dialog>;
+}
+
 function UpdateDialog({ data, actions }: { data: NonNullable<PanelState["updates"]>; actions: PanelActions }) {
   const { view, version } = data;
   const available = view.status === "available";
@@ -448,12 +464,18 @@ export function Panel({ state, actions, width = 672, height = 704 }: {
   const notice = headset ? state.headsetNotice : state.mouseNotice?.text;
   const noticeError = headset || !!state.mouseNotice?.error;
   const updateData = state.updates;
+  const updateAvailable = hasUpdate(updateData?.view);
 
   return <Window title="Periféricos Tarve" width={width} height={height} minWidth={464} minHeight={504} position="center"
     theme={theme} onCloseRequest={event => { event.preventDefault(); actions.close(); }}>
     <TitleBar height={56} appearance={state.dark ? "dark" : "light"} buttonStyle={{ width: compact ? 32 : 40 }}
       actions={<Row align="center" gap={4}>
-        {hasUpdate(updateData?.view) ? <Button id="open-updates" variant="secondary" size="sm"
+        <Button id="open-settings" variant={state.settingsOpen ? "secondary" : "ghost"} size="sm"
+          control={{ role: "button", label: "Configurações" }} onClick={actions.showSettings}
+          style={{ width: 32, height: 32, radius: 8, padding: 0, shrink: 0 }}>
+          <Icon iconNode={glyphs.settings} size={16} color={state.settingsOpen ? accent : muted} />
+        </Button>
+        {updateAvailable ? <Button id="open-updates" variant="secondary" size="sm"
           control={{ role: "button", label: "Atualização disponível" }} onClick={actions.showUpdates}
           style={{ width: 32, height: 32, radius: 8, padding: 0, shrink: 0 }}>
           <Icon iconNode={glyphs.update} size={16} color={accent} />
@@ -463,7 +485,7 @@ export function Panel({ state, actions, width = 672, height = 704 }: {
       style={{ background: "var(--card)", padding: { left: titleInset } }}>
       <Row id="panel-brand" gap={8} align="center">
         <Image src={brandIcon} style={{ width: 32, height: 32, shrink: 0 }} />
-        <Text size={14} weight={640}>Periféricos</Text>
+        {currentWidth >= 500 || !updateAvailable ? <Text size={14} weight={640}>Periféricos</Text> : null}
       </Row>
     </TitleBar>
     {state.visible ? <Scroll id="device-scroll" key={state.tab} flex={1} style={{ scrollbarColor: "var(--scrollbar)" }}>
@@ -476,6 +498,7 @@ export function Panel({ state, actions, width = 672, height = 704 }: {
         {notice ? <Text size={13} color={noticeError ? "var(--destructive-text)" : muted}>{notice}</Text> : null}
       </Column>
     </Scroll> : <View flex={1} />}
-    {state.visible && updateData?.open ? <UpdateDialog data={updateData} actions={actions} /> : null}
+    {state.visible && (updateData?.open ? <UpdateDialog data={updateData} actions={actions} />
+      : state.settingsOpen ? <SettingsDialog state={state} actions={actions} /> : null)}
   </Window>;
 }

@@ -3,10 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { dll, pointer, systemDirectory, view, wide } from "./ffi";
+import { dll, fromWide, pointer, systemDirectory, view, wide } from "./ffi";
 import { kernel, readWidePointer, WindowsError } from "./kernel";
 
 const TASK = "Perifericos Tarve";
+const { GetOEMCP, MultiByteToWideChar } = dll("kernel32", {
+  GetOEMCP: { args: [], returns: "u32" },
+  MultiByteToWideChar: { args: ["u32", "u32", "buffer", "i32", "buffer", "i32"], returns: "i32" },
+});
 
 export function packaged(): boolean {
   if (process.versions.tjs) return true;
@@ -17,10 +21,20 @@ export function packaged(): boolean {
 
 function schtasks(args: string[]): { status: number | null; output: string } {
   const result = spawnSync(`${systemDirectory}\\schtasks.exe`, args, {
-    windowsHide: true, timeout: 4000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+    windowsHide: true, timeout: 4000, stdio: ["ignore", "pipe", "ignore"],
   });
   if (result.error) throw result.error;
-  return { status: result.status, output: result.stdout?.replaceAll("\0", "") ?? "" };
+  const stdout = result.stdout;
+  if (!stdout?.length) return { status: result.status, output: "" };
+  const bom = stdout?.[0] === 0xff && stdout[1] === 0xfe;
+  if (bom || (stdout[0] === 0x3c && stdout[1] === 0)) {
+    return { status: result.status, output: fromWide(stdout, bom ? 2 : 0) };
+  }
+  // schtasks can emit OEM text even when its XML header says UTF-16.
+  const chars = new Uint8Array(stdout.length * 2);
+  const length = MultiByteToWideChar(GetOEMCP(), 0, stdout, stdout.length, chars, stdout.length);
+  const output = length > 0 ? fromWide(chars.subarray(0, length * 2)) : stdout.toString("utf8");
+  return { status: result.status, output };
 }
 
 function taskEnabled(name: string): boolean {
@@ -28,7 +42,36 @@ function taskEnabled(name: string): boolean {
   return status === 0 && !/<Enabled>\s*false\s*<\/Enabled>/i.test(output);
 }
 
-export function startupEnabled(): boolean { return packaged() && taskEnabled(TASK); }
+function startupTask(): string | undefined {
+  const { status, output } = schtasks(["/Query", "/TN", TASK, "/XML"]);
+  return status === 0 ? output : undefined;
+}
+
+function taskTargetsExecutable(task: string, executable = process.execPath): boolean {
+  const command = /<Command>([^<]+)<\/Command>/i.exec(task)?.[1];
+  return command?.trim().replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").toLowerCase()
+    === executable.toLowerCase();
+}
+
+export function startupEnabled(): boolean {
+  if (!packaged()) return false;
+  const task = startupTask();
+  return !!task && taskTargetsExecutable(task) && !/<Enabled>\s*false\s*<\/Enabled>/i.test(task);
+}
+
+export function migrateStartup(): void {
+  const task = startupTask();
+  if (task && !taskTargetsExecutable(task) && !/<Enabled>\s*false\s*<\/Enabled>/i.test(task)) {
+    registerTask(userSid());
+  }
+}
+
+export function removeStartup(executable = process.execPath): void {
+  const task = startupTask();
+  if (task && taskTargetsExecutable(task, executable) && schtasks(["/Delete", "/TN", TASK, "/F"]).status !== 0) {
+    throw new Error("O Agendador de Tarefas recusou a remoção da tarefa.");
+  }
+}
 
 function userSid(): string {
   const security = dll("advapi32", {
@@ -54,7 +97,7 @@ function userSid(): string {
 }
 
 export function setStartup(enabled: boolean): void {
-  if (!packaged()) throw new Error("Use o executável da pasta dist para ativar a inicialização.");
+  if (!packaged()) throw new Error("Use o Periféricos instalado ou o executável compilado.");
   if (enabled) {
     const sid = userSid();
     if (taskEnabled(`HS80 MAX - ${sid}`)) {
@@ -62,7 +105,7 @@ export function setStartup(enabled: boolean): void {
     }
     registerTask(sid);
   } else {
-    schtasks(["/Delete", "/TN", TASK, "/F"]);
+    removeStartup();
   }
   if (startupEnabled() !== enabled) {
     throw new Error("O Agendador de Tarefas recusou a alteração.");

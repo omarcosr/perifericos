@@ -5,6 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { Data, NtExecutable, NtExecutableResource, Resource } from "resedit";
 import manifest from "../package.json";
 import { updatePublicKey } from "../src/update-settings";
 
@@ -37,6 +38,25 @@ function tarve(...args: string[]): void {
   if (result.status !== 0) throw new Error(`tarve ${args[0]} retornou ${result.status ?? "um erro"}.`);
 }
 
+function installer(host: string, out: string, staging: string): void {
+  const resources = NtExecutableResource.from(NtExecutable.from(readFileSync(host)));
+  const group = Resource.IconGroupEntry.fromEntries(resources.entries)[0];
+  if (!group) throw new Error("O executável precisa de um ícone para gerar o instalador.");
+  const icons = new Data.IconFile();
+  icons.icons = group.getIconItemsFromEntries(resources.entries).map(data => ({ data }));
+  const icon = join(staging, "Perifericos.ico");
+  writeFileSync(icon, Buffer.from(icons.generate()));
+  const result = spawnSync(process.env.PERIFERICOS_ISCC || "ISCC.exe", [
+    `/DVersion=${version}`, `/DAppExe=${host}`, `/DAppIcon=${icon}`,
+    `/O${out}`, join(root, "scripts", "installer.iss"),
+  ], { cwd: root, stdio: "inherit" });
+  if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+    throw new Error("Instale o Inno Setup 6.7.4 e defina PERIFERICOS_ISCC com o caminho de ISCC.exe.");
+  }
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`O Inno Setup retornou ${result.status ?? "um erro"}.`);
+}
+
 if (command === "build") {
   tarve("build", ...common, "--packs", "--version", version, "--outfile", join(values.out ?? "dist", "Perifericos.exe"));
 } else {
@@ -66,6 +86,7 @@ if (command === "build") {
     const signed = { payload, signature: sign(null, Buffer.from(payload, "utf8"), privateKey).toString("base64") };
     verifyUpdateManifest(signed, updatePublicKey);
     mkdirSync(out, { recursive: true });
+    installer(host, out, staging);
     copyFileSync(join(release, exeName), join(out, exeName));
     copyFileSync(pack, join(out, packName));
     writeFileSync(join(out, "latest.json"), JSON.stringify(signed, null, 2) + "\n");

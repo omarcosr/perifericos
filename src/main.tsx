@@ -9,14 +9,27 @@ import { batteryTooltip, headsetTrayImage } from "./win/battery-icon";
 import { createMouseBatteryIcon } from "./win/battery-tray";
 import { PreferenceStore, sounds, systemDark, type Preferences } from "./win/preferences";
 import { playSound, stopSound } from "./win/sound";
-import { packaged, setStartup, startupEnabled } from "./win/startup";
+import { migrateStartup, packaged, removeStartup, setStartup, startupEnabled } from "./win/startup";
 import { delay } from "./win/ffi";
 
 const APP_ID = "Perifericos.Tarve";
 const updateCheckInterval = 6 * 60 * 60 * 1000;
 
 async function main(): Promise<void> {
-  const instance = await requestSingleInstance({ id: APP_ID });
+  const installerAction = process.argv.find(arg => arg === "--migrate-startup" || arg === "--remove-startup");
+  if (installerAction && packaged()) {
+    if (installerAction === "--migrate-startup") migrateStartup();
+    else removeStartup(process.argv.find(arg => arg.startsWith("--startup-target="))?.slice("--startup-target=".length));
+    return;
+  }
+  let instance = await requestSingleInstance({ id: APP_ID });
+  if (process.argv.includes("--stop") && process.argv.includes("--wait")) {
+    for (let attempt = 0; !instance.primary && attempt < 50; attempt++) {
+      await delay(100);
+      instance = await requestSingleInstance({ id: APP_ID });
+    }
+    if (!instance.primary) throw new Error("O Periféricos ainda está em execução.");
+  }
   if (!instance.primary) return;
   const args = instance.launch.args;
   if (args.includes("--stop") || args.includes("--hide")) { instance.release(); return; }
@@ -37,7 +50,7 @@ async function main(): Promise<void> {
   const packagedApp = packaged();
   const state: PanelState = {
     visible: !args.includes("--run"), dark: systemDark(), tab: args.includes("--mouse") ? "mouse" : "headset",
-    preferences, startup: false, startupPending: false, startupAvailable: packagedApp,
+    preferences, startup: false, startupPending: false, startupAvailable: packagedApp, settingsOpen: false,
     headset: { status: "looking" }, mouse: { status: "looking" }, mouseModels: [], mouseBusy: false,
     headsetNotice: importError, dpi: "", rate: "",
   };
@@ -109,6 +122,7 @@ async function main(): Promise<void> {
     if (!state.updates || state.updates.open || exit) return;
     const available = hasUpdate(state.updates.view);
     if (!available && !force) return;
+    state.settingsOpen = false;
     state.updates.open = true;
     if (!available) void updates.checkRemote();
     draw();
@@ -118,6 +132,7 @@ async function main(): Promise<void> {
     const menu: TrayMenuItem[] = [
       { id: "show", label: "Abrir painel", onSelect: () => show() },
       { id: "mouse", label: "Abrir aba Mouse", onSelect: () => show("mouse") },
+      { id: "settings", label: "Configurações", onSelect: () => { actions.showSettings(); show(); } },
     ];
     if (hasUpdate(state.updates?.view)) {
       menu.push({ id: "updates", label: "Atualização disponível", onSelect: () => { openUpdates(); show(); } });
@@ -164,13 +179,15 @@ async function main(): Promise<void> {
     tab: setTab,
     close() { if (trayAvailable) hide(); else void quit(); },
     lightsOff: enabled => save("lightsOff", enabled),
+    showSettings() { if (!state.updates?.open) { state.settingsOpen = true; draw(); } },
+    closeSettings() { state.settingsOpen = false; draw(); },
     async startup(enabled) {
       if (state.startupPending) return;
       state.startupPending = true;
-      state.headsetNotice = undefined;
+      state.startupNotice = undefined;
       draw();
       try { await delay(0); setStartup(enabled); state.startup = startupEnabled(); }
-      catch (error) { state.headsetNotice = error instanceof Error ? error.message : "Não foi possível alterar a inicialização."; }
+      catch (error) { state.startupNotice = error instanceof Error ? error.message : "Não foi possível alterar a inicialização."; }
       finally { state.startupPending = false; draw(); }
     },
     sound(key, value) { if (Number.isInteger(value) && value >= 0 && value < sounds.length) save(key, value); },

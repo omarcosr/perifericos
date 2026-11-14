@@ -23,7 +23,7 @@ const state: PanelState = {
   mouse: { status: "connected", model: viper.id, wireless: true, battery: 95, dpi: { x: 1300, y: 1300 }, polling: 1000,
     rates: [125, 500, 1000, 2000, 4000, 8000] },
   mouseModels: [viper.id],
-  mouseBusy: false, startup: false, startupPending: false, startupAvailable: true,
+  mouseBusy: false, startup: false, startupPending: false, startupAvailable: true, settingsOpen: false,
   preferences: { lightsOff: true, onUnmute: 1, onMute: 2 }, dpi: "1300", rate: "1000",
   updates: { open: false, version: "0.5.0", view: { status: "idle" } },
 };
@@ -70,6 +70,8 @@ const actions: PanelActions = {
   close() { events.push("close"); },
   lightsOff(value) { state.preferences.lightsOff = value; render.app.update(); },
   startup(value) { state.startup = value; render.app.update(); },
+  showSettings() { state.settingsOpen = true; render.app.update(); },
+  closeSettings() { state.settingsOpen = false; render.app.update(); },
   sound(key, value) { state.preferences[key] = value; render.app.update(); },
   preview(value) { events.push(`preview:${value}`); },
   unmute() { events.push("unmute"); },
@@ -168,7 +170,7 @@ function verifyLayout(snapshot: Snapshot, layout = size): void {
   }
   if (tab === "headset") {
     aligned(find("leds").x, title.x, "Coluna dos controles do headset");
-    aligned(find("startup").x, find("leds").x, "Coluna dos interruptores");
+    assert(!snapshot.nodes.some(node => node.id === "startup"), "A inicialização pertence ao popup");
     for (const id of ["sound-active", "sound-muted"]) {
       const field = find(`${id}-trigger`);
       const button = find(`${id}-preview`);
@@ -257,8 +259,6 @@ async function verifyDpiSlider(): Promise<void> {
 async function verifyControls(): Promise<void> {
   await locate("leds").click();
   await wait(() => !state.preferences.lightsOff);
-  await locate("startup").click();
-  await wait(() => state.startup);
   await locate("sound-active-preview").click();
   await wait(() => events.includes("preview:1"));
   await locate("sound-active-trigger").click();
@@ -276,6 +276,20 @@ async function verifyControls(): Promise<void> {
   await wait(() => events.includes("polling:4000"));
   await locate("tab-headset").press("Space");
   await wait(() => state.tab === "headset");
+}
+
+async function verifySettings(): Promise<void> {
+  await locate("open-settings").press("Space");
+  await locate("app-settings-content").waitFor();
+  const snapshot = await render.inspect();
+  const dialog = box(snapshot, "app-settings-content");
+  aligned(dialog.x + dialog.width / 2, snapshot.width / 2, "Centro do popup de configurações");
+  await render.capture(resolve(folder, `${name}-configuracoes.png`));
+  await locate("startup").click();
+  await wait(() => state.startup);
+  await locate("close-settings").press("Escape");
+  await wait(() => !state.settingsOpen);
+  assert(!(await render.inspect()).nodes.some(node => node.id === "startup"));
 }
 
 async function verifyUpdates(): Promise<void> {
@@ -384,6 +398,7 @@ try {
   if (scenario === "mouse" && size === "normal") await verifyDpiSlider();
   if (scenario === "mouse-picker") await verifyMousePicker();
   if (scenario === "updates") await verifyUpdates();
+  if (scenario === "headset" || scenario === "mouse-off") await verifySettings();
   if (size === "compact" && box(snapshot, "device-scroll").scrollMax > 0) {
     render.app.scrollTo("device-scroll", { y: "end" });
     await render.waitFor(current => {

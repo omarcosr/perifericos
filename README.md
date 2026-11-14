@@ -10,15 +10,15 @@ Controle o microfone e os LEDs do seu headset, ajuste o DPI e a taxa de polling 
 
 ## Começar
 
-1. Baixe o `Perifericos-<versão>-win32-x64.exe` na seção **Assets** da release mais recente.
-2. Salve o executável em uma pasta de sua preferência e abra-o. As dependências de execução vêm no próprio arquivo.
+1. Baixe o `Perifericos-Setup-<versão>-win32-x64.exe` na seção **Assets** da release mais recente.
+2. Execute o instalador e abra **Periféricos Tarve** pelo menu Iniciar. A instalação é por usuário e pode ser removida em **Configurações do Windows → Aplicativos → Aplicativos instalados**.
 3. Conecte o receptor do headset ou o mouse compatível e selecione **Headset** ou **Mouse** no painel.
 
 Se você compilou o projeto localmente, abra `dist/Perifericos.exe`.
 
 A porcentagem do headset aparece em **azul** na bandeja do sistema e a do mouse selecionado, em **verde**. Passe o cursor sobre o indicador para conferir o estado de carga. Se os ícones estiverem no menu oculto **^**, arraste-os para perto do relógio.
 
-Para manter o controle em segundo plano ao entrar na conta, ative **Iniciar com o Windows** na aba **Headset**. O app inicia na bandeja cerca de 15 segundos após o login.
+Para manter o controle em segundo plano ao entrar na conta, abra **Configurações** pela engrenagem ou pelo menu da bandeja e ative **Iniciar com o Windows**. O app abre na bandeja cerca de 15 segundos após o login. Se a versão portátil já iniciava com o Windows, o instalador transfere essa configuração para o app instalado.
 
 ## Dispositivos compatíveis
 
@@ -85,7 +85,7 @@ O [catálogo HID](src/devices/catalog.ts) concentra os modelos e as interfaces r
 
 ## Publicação
 
-Altere `version` no `package.json` e envie a mudança à `main`. O workflow **Publicar versão** roda os testes, envia o executável, o pacote `.tarve` e o `latest.json` assinado a uma release e então a publica. [Workflow de publicação](.github/workflows/release.yml)
+Altere `version` no `package.json` e envie a mudança à `main`. O workflow **Publicar versão** roda os testes e envia o instalador, o executável, o pacote `.tarve` e o `latest.json` assinado à release antes de publicá-la. [Workflow de publicação](.github/workflows/release.yml)
 
 Para publicar a versão atual, abra **Actions → Publicar versão → Run workflow** e escolha a `main`. Se um envio parar no meio, reexecute o workflow do commit original para concluir o rascunho.
 
@@ -101,7 +101,7 @@ Get-Content -LiteralPath $keyPath -Raw | gh secret set TARVE_UPDATE_PRIVATE_KEY 
 
 Guarde a chave privada fora do Git e reutilize-a nas próximas versões para que os apps instalados aceitem as atualizações. A consulta do app usa o endereço público das releases do repositório. [Secrets do GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)
 
-Para gerar os três arquivos em `releases/<versão>` localmente, use a chave no caminho acima ou informe seu caminho ou valor em base64 na variável `TARVE_UPDATE_PRIVATE_KEY`.
+Para gerar os quatro arquivos em `releases/<versão>`, instale o Inno Setup 6.7.4 e aponte `PERIFERICOS_ISCC` para `ISCC.exe` se ele estiver fora do PATH. Use a chave no caminho acima ou informe seu caminho ou valor em base64 na variável `TARVE_UPDATE_PRIVATE_KEY`. [Inno Setup](https://github.com/jrsoftware/issrc/releases/tag/is-6_7_4)
 
 ```powershell
 bun run release --notes 'Resumo da versão'
