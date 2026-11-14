@@ -5,6 +5,9 @@ import { playSound } from "../win/sound";
 import { HeadsetLink } from "./hs80";
 import { headsetBattery } from "./protocol";
 
+const batteryInterval = 15_000;
+const chargingInterval = 2_000;
+
 export type HeadsetStatus = "looking" | "disconnected" | "connected" | "icue" | "legacy" | "audio-error";
 export interface HeadsetState {
   status: HeadsetStatus;
@@ -27,6 +30,7 @@ export class HeadsetController {
   private icue = false;
   private icueDue = 0;
   private batteryDue = 0;
+  private chargingDue = 0;
   private modeDue = 0;
   private lightDue = 0;
   private windowsDue = 0;
@@ -122,7 +126,7 @@ export class HeadsetController {
           interval = 3000;
           return;
         }
-        this.batteryDue = this.modeDue = this.lightDue = this.windowsDue = 0;
+        this.batteryDue = this.chargingDue = this.modeDue = this.lightDue = this.windowsDue = 0;
         this.lights = undefined;
       }
       await this.update(this.link, this.capture!, now);
@@ -167,18 +171,21 @@ export class HeadsetController {
       this.windowsDue = now + 1000;
     }
     let battery = old.battery;
-    let charging = old.charging;
     if (now >= this.batteryDue) {
       battery = undefined;
-      charging = undefined;
       try {
         for (let i = 0; i < 3 && battery === undefined; i++) battery = headsetBattery(await link.get(0x0f));
       } catch { /* The mic and LEDs can continue while telemetry is unavailable. */ }
+      this.batteryDue = performance.now() + batteryInterval;
+    }
+    let charging = old.charging;
+    if (now >= this.chargingDue) {
+      charging = undefined;
       try {
         const status = await link.get(0x10);
         if (status <= 2) charging = status === 1;
       } catch { /* The battery level can still be shown when charge state is unavailable. */ }
-      this.batteryDue = performance.now() + 15000;
+      this.chargingDue = performance.now() + chargingInterval;
     }
     this.publish({ status: "connected", hardwareMuted, windowsMuted, battery, charging });
     const muted = hardwareMuted || windowsMuted;

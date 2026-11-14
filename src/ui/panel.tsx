@@ -119,15 +119,15 @@ function Connection({ text }: { text: string }) {
 
 function Battery({ level, charging, warning }: { level?: number; charging?: boolean; warning: string }) {
   const low = !charging && level !== undefined && level <= 20;
-  const status = charging ? "Carregando" : low ? "Carga baixa" : undefined;
-  const statusColor = charging ? "var(--success)" : warning;
+  const labelColor = charging ? "var(--success)" : muted;
   return <Column id="device-battery" gap={8} style={{ width: "100%", minHeight: 48 }}>
     <Row id="battery-label-row" align="center" justify="between" gap={8} style={{ minHeight: 32 }}>
       <Row align="center" gap={8}>
-        <Icon iconNode={charging ? glyphs.charging : glyphs.battery} size={16} color={charging ? statusColor : muted} />
+        <Icon iconNode={charging ? glyphs.charging : glyphs.battery} size={16} color={labelColor} />
         <Column>
-          <Text size={13} weight={500} color={muted} style={{ lineHeight: 1.23 }}>Bateria</Text>
-          {status ? <Text id="battery-status" size={12} weight={560} color={statusColor} style={{ lineHeight: 1.33 }}>{status}</Text> : null}
+          <Text id="battery-status" size={13} weight={500} color={labelColor}
+            style={{ lineHeight: 1.23 }}>{charging ? "Carregando" : "Bateria"}</Text>
+          {low ? <Text id="battery-low" size={12} weight={560} color={warning} style={{ lineHeight: 1.33 }}>Carga baixa</Text> : null}
         </Column>
       </Row>
       <Text id="battery-reading" size={level === undefined ? 13 : 24} weight={650}
@@ -135,7 +135,7 @@ function Battery({ level, charging, warning }: { level?: number; charging?: bool
         {level === undefined ? "Sem leitura" : `${level}%`}
       </Text>
     </Row>
-    {level !== undefined ? <Progress id="battery-track" label="Bateria" value={level} style={{
+    {level !== undefined ? <Progress id="battery-track" label={charging ? "Nível de carga" : "Bateria"} value={level} style={{
       height: 8, radius: 4, background: "var(--muted)", foreground: low ? warning : accent,
     }} /> : null}
   </Column>;

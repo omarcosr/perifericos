@@ -21,8 +21,8 @@ const colors = {
 };
 
 export function batteryTooltip(name: string, level?: number, charging?: boolean): string {
-  const battery = level === undefined ? (charging ? "" : " · bateria sem leitura") : ` · ${level}% de bateria`;
-  return `${name}${battery}${charging ? " · Carregando" : ""}`;
+  if (charging) return `${name} · Carregando${level === undefined ? "" : ` · ${level}%`}`;
+  return `${name} · ${level === undefined ? "bateria sem leitura" : `${level}% de bateria`}`;
 }
 
 function insideRoundedRect(x: number, y: number, left: number, top: number, right: number, bottom: number, radius: number): boolean {

@@ -160,7 +160,10 @@ function verifyLayout(snapshot: Snapshot, layout = size): void {
   }
   const status = find("device-status-row");
   const battery = find("battery-reading");
-  if (device.charging) assert.equal(find("battery-status").text, "Carregando");
+  assert.equal(find("battery-status").text, device.charging ? "Carregando" : "Bateria");
+  if (device.charging) {
+    assert(!snapshot.nodes.some(node => node.text === "Bateria" || node.id === "battery-low"));
+  }
   aligned(middle(find("device-connection")), middle(status), "Centro da faixa de conexão");
   aligned(right(battery), right(status), "Coluna da bateria");
   if (device.battery !== undefined) {
