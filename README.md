@@ -103,7 +103,7 @@ Get-Content -LiteralPath $keyPath -Raw | gh secret set TARVE_UPDATE_PRIVATE_KEY 
 
 Guarde a chave privada fora do Git e reutilize-a nas próximas versões para que os apps instalados aceitem as atualizações. A consulta do app usa o endereço público das releases do repositório. [Secrets do GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)
 
-Para gerar os arquivos em `releases/<versão>`, instale o Inno Setup 6.7.4 e aponte `PERIFERICOS_ISCC` para `ISCC.exe` se ele estiver fora do PATH. Use a chave no caminho acima ou informe seu caminho ou valor em base64 na variável `TARVE_UPDATE_PRIVATE_KEY`. [Inno Setup](https://github.com/jrsoftware/issrc/releases/tag/is-6_7_4)
+Para gerar os arquivos em `releases/<versão>`, use a chave no caminho acima ou informe seu caminho ou valor em base64 na variável `TARVE_UPDATE_PRIVATE_KEY`. O instalador é gerado pelo próprio Tarve (`tarve package --format setup`) a partir do campo `tarve.installer` do `package.json`; não precisa de ferramentas externas. Para usar um checkout do Tarve, aponte `TARVE_CLI` para `packages/core/cli.ts`.
 
 ```powershell
 bun run release --notes 'Resumo da versão'

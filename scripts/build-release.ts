@@ -5,7 +5,6 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { Data, NtExecutable, NtExecutableResource, Resource } from "resedit";
 import manifest from "../package.json";
 import { updateManifestFile, updatePublicKey } from "../src/update-settings";
 
@@ -29,7 +28,8 @@ if (publicKey.crv !== "Ed25519" || !publicKey.x || Buffer.from(publicKey.x, "bas
   throw new Error("A chave de assinatura não corresponde à chave pública do Periféricos.");
 }
 const root = join(import.meta.dir, "..");
-const cli = join(root, "node_modules", "@tarve", "core", "dist", "npm", "cli.js");
+// TARVE_CLI: a Tarve checkout's packages/core/cli.ts instead of the installed package.
+const cli = process.env.TARVE_CLI || join(root, "node_modules", "@tarve", "core", "dist", "npm", "cli.js");
 const env = { ...process.env, TARVE_UPDATE_PRIVATE_KEY: key };
 const common = ["src/main.tsx", "--runtime", "txiki", "--native-features", "core"];
 function tarve(...args: string[]): void {
@@ -38,23 +38,11 @@ function tarve(...args: string[]): void {
   if (result.status !== 0) throw new Error(`tarve ${args[0]} retornou ${result.status ?? "um erro"}.`);
 }
 
-function installer(host: string, out: string, staging: string): void {
-  const resources = NtExecutableResource.from(NtExecutable.from(readFileSync(host)));
-  const group = Resource.IconGroupEntry.fromEntries(resources.entries)[0];
-  if (!group) throw new Error("O executável precisa de um ícone para gerar o instalador.");
-  const icons = new Data.IconFile();
-  icons.icons = group.getIconItemsFromEntries(resources.entries).map(data => ({ data }));
-  const icon = join(staging, "Perifericos.ico");
-  writeFileSync(icon, Buffer.from(icons.generate()));
-  const result = spawnSync(process.env.PERIFERICOS_ISCC || "ISCC.exe", [
-    `/DVersion=${version}`, `/DAppExe=${host}`, `/DAppIcon=${icon}`,
-    `/O${out}`, join(root, "scripts", "installer.iss"),
-  ], { cwd: root, stdio: "inherit" });
-  if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
-    throw new Error("Instale o Inno Setup 6.7.4 e defina PERIFERICOS_ISCC com o caminho de ISCC.exe.");
-  }
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`O Inno Setup retornou ${result.status ?? "um erro"}.`);
+// The installer is a Tarve app too (`tarve package --format setup`), configured by
+// package.json `tarve.installer`: wizard, Start menu entry, Apps & features, hooks.
+function installer(host: string, out: string): void {
+  tarve("package", host, "--format", "setup", "--entry", "src/main.tsx", "--runtime", "txiki",
+    "--native-features", "core", "--version", version, "--out", out);
 }
 
 if (command === "build") {
@@ -87,7 +75,7 @@ if (command === "build") {
     const signed = { payload, signature };
     verifyUpdateManifest(signed, updatePublicKey);
     mkdirSync(out, { recursive: true });
-    installer(host, out, staging);
+    installer(host, out);
     copyFileSync(join(release, exeName), join(out, exeName));
     copyFileSync(pack, join(out, packName));
     writeFileSync(join(out, updateManifestFile), JSON.stringify(signed, null, 2) + "\n");

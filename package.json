@@ -17,6 +17,28 @@
     "name": "Periféricos",
     "icon": "src/ui/assets/app-icon.png",
     "appId": "Perifericos.Tarve",
-    "description": "Controle de mouses e headsets"
+    "description": "Controle de mouses e headsets",
+    "installer": {
+      "directory": "Perifericos",
+      "shortcutName": "Periféricos",
+      "homepage": "https://github.com/omarcosr/perifericos",
+      "options": {
+        "startup": {
+          "default": false,
+          "command": ["--enable-startup"],
+          "label": { "en": "Start Periféricos in the tray when you sign in", "pt-BR": "Iniciar o Periféricos na bandeja ao entrar no Windows" }
+        }
+      },
+      "hooks": {
+        "beforeInstall": ["--stop", "--wait"],
+        "afterInstall": ["--migrate-startup"],
+        "beforeUninstall": [["--stop", "--wait"], ["--remove-startup"]]
+      },
+      "previous": {
+        "uninstallKeys": ["Perifericos.Tarve_is1"],
+        "files": ["unins000.exe", "unins000.dat"],
+        "shortcuts": ["Periféricos Tarve.lnk"]
+      }
+    }
   }
 }

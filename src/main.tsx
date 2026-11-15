@@ -16,9 +16,10 @@ const APP_ID = "Perifericos.Tarve";
 const updateCheckInterval = 6 * 60 * 60 * 1000;
 
 async function main(): Promise<void> {
-  const installerAction = process.argv.find(arg => arg === "--migrate-startup" || arg === "--remove-startup");
+  const installerAction = process.argv.find(arg => arg === "--migrate-startup" || arg === "--enable-startup" || arg === "--remove-startup");
   if (installerAction && packaged()) {
     if (installerAction === "--migrate-startup") migrateStartup();
+    else if (installerAction === "--enable-startup") setStartup(true);
     else removeStartup(process.argv.find(arg => arg.startsWith("--startup-target="))?.slice("--startup-target=".length));
     return;
   }

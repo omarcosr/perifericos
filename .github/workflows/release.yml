@@ -90,20 +90,6 @@ jobs:
           bun run check
           bun run test
 
-      - name: Instalar Inno Setup
-        if: steps.version.outputs.publish == 'true'
-        shell: pwsh
-        run: |
-          $archive = Join-Path $env:RUNNER_TEMP innosetup-6.7.4.exe
-          Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe' -OutFile $archive
-          $expected = 'a549929319f9120716677c685535ca4671e4b937b5fdc87e2585f32d8eb30e8c'
-          if ((Get-FileHash -LiteralPath $archive).Hash -ine $expected) { throw 'SHA-256 inválido no Inno Setup.' }
-          $folder = Join-Path $env:RUNNER_TEMP 'Inno Setup'
-          $setup = Start-Process -FilePath $archive -WindowStyle Hidden -Wait -PassThru -ArgumentList ('/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOICONS /DIR="{0}"' -f $folder)
-          $compiler = Join-Path $folder ISCC.exe
-          if ($setup.ExitCode -ne 0 -or !(Test-Path -LiteralPath $compiler)) { throw 'Falha na instalação do Inno Setup.' }
-          "PERIFERICOS_ISCC=$compiler" >> $env:GITHUB_ENV
-
       - name: Gerar arquivos assinados
         if: steps.version.outputs.publish == 'true'
         env:
