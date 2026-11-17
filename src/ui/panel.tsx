@@ -6,7 +6,9 @@ import type { HeadsetState } from "../devices/headset-controller";
 import { validDpi, type MouseState } from "../devices/mouse-state";
 import { hs80, mchoseK7, mouseModels, viper, type MouseModelId } from "../devices/catalog";
 import { hasUpdate, type UpdateView } from "../app-updates";
+import type { TrayDevice } from "../win/battery-icon";
 import { sounds, type Preferences } from "../win/preferences";
+import { invalidTrayColor, sameTrayAppearance, trayDevices, TraySettings, type TrayDraft, type TrayDrafts } from "./tray-settings";
 import { panelTheme } from "./panel-theme";
 import brandIcon from "./assets/app-icon.png" with { type: "file" };
 import headsetPhoto from "./assets/hs80-max.webp" with { type: "file" };
@@ -30,6 +32,10 @@ export interface PanelState {
   startupAvailable: boolean;
   settingsOpen: boolean;
   startupNotice?: string;
+  trayStyleNotice?: string;
+  settingsView: "tray" | "general";
+  trayDevice: TrayDevice;
+  trayDrafts: TrayDrafts;
   headsetNotice?: string;
   dpi: string;
   rate: string;
@@ -41,6 +47,10 @@ export interface PanelActions {
   lightsOff(enabled: boolean): void;
   startup(enabled: boolean): void;
   showSettings(): void;
+  settingsView(view: PanelState["settingsView"]): void;
+  selectTrayDevice(device: TrayDevice): void;
+  editTray(device: TrayDevice, draft: TrayDraft): void;
+  applyTray(): void;
   closeSettings(): void;
   sound(key: "onUnmute" | "onMute", sound: number): void;
   preview(sound: number): void;
@@ -460,21 +470,47 @@ function DeviceDetail({ state, actions, tab, split, controlsCompact }: {
 }
 
 function SettingsDialog({ state, actions }: { state: PanelState; actions: PanelActions }) {
-  return <Dialog id="app-settings" open title="Configurações" width={400} showClose={false}
-    closeOnOverlay={false} onOpenChange={actions.closeSettings} style={{ radius: 16, padding: 24, gap: 16 }}
-    footer={<Button id="close-settings" variant="outline" onClick={actions.closeSettings}
-      style={{ ...fixedButton, height: 40 }}>Fechar</Button>}>
-    <Column gap={4}>
-      <Switch id="startup" label="Iniciar com o Windows" checked={state.startup} style={settingsSwitch}
-        disabled={!state.startupAvailable || state.startupPending} onCheckedChange={actions.startup} />
-      <Text id="startup-help" size={13} color={muted} style={settingsHint}>
-        {state.startupPending ? "Salvando…" : state.startupAvailable
-          ? "Abre na bandeja quando você entra na sua conta." : "Disponível no Periféricos instalado ou no executável compilado."}
-      </Text>
-      {state.startupNotice ? <Text id="startup-notice" size={13} color="var(--destructive-text)" style={settingsHint}>
-        {state.startupNotice}
-      </Text> : null}
-    </Column>
+  const changes = trayDevices.some(({ id }) => {
+    const draft = state.trayDrafts[id];
+    return draft && (!sameTrayAppearance(draft, state.preferences.tray[id]) || invalidTrayColor(draft));
+  });
+  const invalid = Object.values(state.trayDrafts).some(invalidTrayColor);
+  const inTray = state.settingsView === "tray";
+  const device = state.trayDevice;
+  return <Dialog id="app-settings" open title="Configurações" width={428} showClose={false}
+    closeOnOverlay={false} onOpenChange={actions.closeSettings} style={{ radius: 16, padding: 20, gap: 12 }}
+    footer={<>
+      <Button id="close-settings" variant="outline" onClick={actions.closeSettings} style={{ ...fixedButton, height: 40 }}>
+        {changes ? "Cancelar" : "Fechar"}
+      </Button>
+      {inTray || changes ? <Button id="apply-tray-settings" disabled={!changes || invalid} onClick={actions.applyTray}
+        style={{ ...fixedButton, height: 40 }}>Aplicar</Button> : null}
+    </>}>
+    <Row gap={8} style={{ borderWidth: { bottom: 1 }, borderColor: border }}>
+      {([{ id: "tray", label: "Bandeja" }, { id: "general", label: "Geral" }] as const).map(({ id, label }) => {
+        const selected = state.settingsView === id;
+        return <Button key={id} id={`settings-${id}`} variant="ghost" size="sm"
+          control={{ role: "tab", selected, label }} onClick={() => actions.settingsView(id)}
+          style={{ width: 96, height: 32, radius: 0, padding: 0, borderWidth: { bottom: 2 },
+            borderColor: selected ? accent : "transparent" }}>
+          <Text size={13} weight={selected ? 650 : 500} color={selected ? undefined : muted}>{label}</Text>
+        </Button>;
+      })}
+    </Row>
+    {inTray ? <TraySettings key={device} device={device} draft={state.trayDrafts[device] ?? state.preferences.tray[device]}
+      dark={state.dark} selectDevice={actions.selectTrayDevice} edit={draft => actions.editTray(device, draft)} /> :
+      <Column gap={4}>
+        <Switch id="startup" label="Iniciar com o Windows" checked={state.startup} style={settingsSwitch}
+          disabled={!state.startupAvailable || state.startupPending} onCheckedChange={actions.startup} />
+        <Text id="startup-help" size={13} color={muted} style={settingsHint}>
+          {state.startupPending ? "Salvando…" : state.startupAvailable
+            ? "Abre na bandeja quando você entra na sua conta." : "Disponível no Periféricos instalado ou no executável compilado."}
+        </Text>
+        {state.startupNotice ? <Text id="startup-notice" size={13} color="var(--destructive-text)" style={settingsHint}>
+          {state.startupNotice}
+        </Text> : null}
+      </Column>}
+    {state.trayStyleNotice ? <Text size={12} color="var(--destructive-text)">{state.trayStyleNotice}</Text> : null}
   </Dialog>;
 }
 

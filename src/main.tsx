@@ -6,8 +6,9 @@ import { HeadsetController } from "./devices/headset-controller";
 import { MouseController } from "./devices/mouse-controller";
 import { Panel, type PanelActions, type PanelState, type Tab } from "./ui/panel";
 import { batteryTooltip, headsetTrayImage } from "./win/battery-icon";
-import { createMouseBatteryIcon } from "./win/battery-tray";
+import { createMouseBatteryIcon, systemTrayIconSize } from "./win/battery-tray";
 import { PreferenceStore, sounds, systemDark, type Preferences } from "./win/preferences";
+import { invalidTrayColor, sameTrayAppearance, trayDevices } from "./ui/tray-settings";
 import { playSound, stopSound } from "./win/sound";
 import { migrateStartup, packaged, removeStartup, setStartup, startupEnabled } from "./win/startup";
 import { delay } from "./win/ffi";
@@ -53,8 +54,14 @@ async function main(): Promise<void> {
     visible: !args.includes("--run"), dark: systemDark(),
     tab: args.includes("--mouse") ? "mouse" : args.includes("--headset") ? "headset" : "home",
     preferences, startup: false, startupPending: false, startupAvailable: packagedApp, settingsOpen: false,
+    settingsView: "tray", trayDevice: "headset", trayDrafts: {},
     headset: { status: "looking" }, mouse: { status: "looking" }, mouseModels: [], mouseBusy: false,
     headsetNotice: importError, dpi: "", rate: "",
+  };
+  let trayDark = systemDark("tray");
+  const headsetIcon = () => {
+    const { style, color, numberSize } = preferences.tray.headset;
+    return headsetTrayImage(state.headset.battery, style, systemTrayIconSize(), trayDark, color, numberSize);
   };
   const draw = () => { if (state.visible && !exit) app?.update(); };
   const updates = new AppUpdates(view => {
@@ -79,7 +86,7 @@ async function main(): Promise<void> {
     const { battery, charging } = state.headset;
     if (!exit && (previous.battery !== battery || previous.charging !== charging)) {
       const tooltip = batteryTooltip(hs80.label, battery, charging);
-      tray?.update(previous.battery === battery ? { tooltip } : { icon: headsetTrayImage(battery), tooltip });
+      tray?.update(previous.battery === battery ? { tooltip } : { icon: headsetIcon(), tooltip });
     }
     draw();
   });
@@ -125,6 +132,8 @@ async function main(): Promise<void> {
     const available = hasUpdate(state.updates.view);
     if (!available && !force) return;
     state.settingsOpen = false;
+    state.trayDrafts = {};
+    state.trayStyleNotice = undefined;
     state.updates.open = true;
     if (!available) void updates.checkRemote();
     draw();
@@ -168,7 +177,7 @@ async function main(): Promise<void> {
     app?.close();
   }
 
-  function save<K extends keyof Preferences>(key: K, value: Preferences[K]): void {
+  function save<K extends "lightsOff" | "onUnmute" | "onMute">(key: K, value: Preferences[K]): void {
     try {
       store.save(key, value);
       preferences[key] = value;
@@ -181,8 +190,50 @@ async function main(): Promise<void> {
     tab: setTab,
     close() { if (trayAvailable) hide(); else void quit(); },
     lightsOff: enabled => save("lightsOff", enabled),
-    showSettings() { if (!state.updates?.open) { state.settingsOpen = true; draw(); } },
-    closeSettings() { state.settingsOpen = false; draw(); },
+    showSettings() {
+      if (state.updates?.open) return;
+      if (!state.settingsOpen) {
+        state.settingsView = "tray";
+        state.trayDevice = state.tab === "mouse" ? "mouse" : "headset";
+      }
+      state.settingsOpen = true;
+      draw();
+    },
+    settingsView(view) { state.settingsView = view; draw(); },
+    selectTrayDevice(device) { state.trayDevice = device; draw(); },
+    editTray(device, draft) {
+      state.trayDrafts[device] = draft;
+      state.trayStyleNotice = undefined;
+      draw();
+    },
+    applyTray() {
+      if (Object.values(state.trayDrafts).some(invalidTrayColor)) return;
+      state.trayStyleNotice = undefined;
+      for (const { id } of trayDevices) {
+        const draft = state.trayDrafts[id];
+        if (!draft) continue;
+        const { style, color, numberSize } = draft;
+        const appearance = { style, color, numberSize };
+        if (!sameTrayAppearance(appearance, preferences.tray[id])) {
+          try { store.saveTray(id, appearance); }
+          catch {
+            state.trayStyleNotice = "Não foi possível salvar todas as alterações. Tente novamente.";
+            break;
+          }
+          preferences.tray[id] = appearance;
+          if (id === "headset") tray?.update({ icon: headsetIcon() });
+          else mouseIcon?.setAppearance(appearance);
+        }
+        delete state.trayDrafts[id];
+      }
+      draw();
+    },
+    closeSettings() {
+      state.settingsOpen = false;
+      state.trayDrafts = {};
+      state.trayStyleNotice = undefined;
+      draw();
+    },
     async startup(enabled) {
       if (state.startupPending) return;
       state.startupPending = true;
@@ -238,7 +289,8 @@ async function main(): Promise<void> {
       }
     });
     tray = app.tray({
-      icon: headsetTrayImage(), tooltip: batteryTooltip(hs80.label), onClick: () => show(),
+      icon: headsetIcon(),
+      tooltip: batteryTooltip(hs80.label), onClick: () => show(),
       onAvailability({ available }) {
         trayAvailable = available;
       },
@@ -247,7 +299,11 @@ async function main(): Promise<void> {
     await app.ready;
     if (!state.visible) app.hide();
     if (!exit) {
-      mouseIcon = createMouseBatteryIcon();
+      mouseIcon = createMouseBatteryIcon(preferences.tray.mouse, dark => {
+        if (exit || trayDark === dark) return;
+        trayDark = dark;
+        tray?.update({ icon: headsetIcon() });
+      });
       headset.start();
       mouse.setForeground(state.visible && state.tab === "mouse");
       mouse.start();

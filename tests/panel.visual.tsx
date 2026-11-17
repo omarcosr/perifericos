@@ -7,6 +7,8 @@ import type { NodeSnapshot, Snapshot } from "@tarve/core/protocol";
 import { hs80, mchoseK7, viper } from "../src/devices/catalog";
 import { K7_RATES } from "../src/devices/mchose-protocol";
 import { Panel, type PanelActions, type PanelState } from "../src/ui/panel";
+import { invalidTrayColor, trayDevices } from "../src/ui/tray-settings";
+import { trayNumberSize } from "../src/win/battery-icon";
 
 const [scenario = "headset", scheme = "dark", size = "normal", output] = process.argv.slice(2);
 const sizes: Record<string, readonly [number, number]> = {
@@ -24,7 +26,10 @@ const state: PanelState = {
     rates: [125, 500, 1000, 2000, 4000, 8000] },
   mouseModels: [viper.id],
   mouseBusy: false, startup: false, startupPending: false, startupAvailable: true, settingsOpen: false,
-  preferences: { lightsOff: true, onUnmute: 1, onMute: 2 }, dpi: "1300", rate: "1000",
+  preferences: { lightsOff: true, onUnmute: 1, onMute: 2,
+    tray: { headset: { style: "classic", numberSize: trayNumberSize.default }, mouse: { style: "classic", numberSize: trayNumberSize.default } } },
+  settingsView: "tray", trayDevice: "headset", trayDrafts: {},
+  dpi: "1300", rate: "1000",
   updates: { open: false, version: "0.5.0", view: { status: "idle" } },
 };
 const viperState = state.mouse;
@@ -80,8 +85,31 @@ const actions: PanelActions = {
   close() { events.push("close"); },
   lightsOff(value) { state.preferences.lightsOff = value; render.app.update(); },
   startup(value) { state.startup = value; render.app.update(); },
-  showSettings() { state.settingsOpen = true; render.app.update(); },
-  closeSettings() { state.settingsOpen = false; render.app.update(); },
+  showSettings() {
+    state.settingsOpen = true;
+    state.settingsView = "tray";
+    state.trayDevice = "headset";
+    render.app.update();
+  },
+  settingsView(view) { state.settingsView = view; render.app.update(); },
+  selectTrayDevice(device) { state.trayDevice = device; render.app.update(); },
+  editTray(device, draft) { state.trayDrafts[device] = draft; render.app.update(); },
+  applyTray() {
+    if (Object.values(state.trayDrafts).some(invalidTrayColor)) return;
+    for (const { id } of trayDevices) {
+      const draft = state.trayDrafts[id];
+      if (!draft) continue;
+      const { style, color, numberSize } = draft;
+      state.preferences.tray[id] = { style, color, numberSize };
+    }
+    state.trayDrafts = {};
+    render.app.update();
+  },
+  closeSettings() {
+    state.settingsOpen = false;
+    state.trayDrafts = {};
+    render.app.update();
+  },
   sound(key, value) { state.preferences[key] = value; render.app.update(); },
   preview(value) { events.push(`preview:${value}`); },
   unmute() { events.push("unmute"); },
@@ -326,12 +354,67 @@ async function verifySettings(): Promise<void> {
   const snapshot = await render.inspect();
   const dialog = box(snapshot, "app-settings-content");
   aligned(dialog.x + dialog.width / 2, snapshot.width / 2, "Centro do popup de configurações");
+  assert(dialog.y >= 16 && dialog.y + dialog.height <= snapshot.height - 16,
+    `O popup deve caber na janela: y=${dialog.y}, altura=${dialog.height}, janela=${snapshot.height}`);
+  for (const style of ["classic", "number", "bars", "ring"]) {
+    const option = box(snapshot, `tray-style-${style}`);
+    assert(option.width >= 64 && option.height >= 48, "Área de clique de cada estilo");
+    assert.equal(option.control?.checked, style === "classic");
+  }
+  const color = box(snapshot, "tray-color-controls");
+  const number = box(snapshot, "tray-number-controls");
+  assert(color.y + color.height <= number.y && number.x + number.width <= dialog.x + dialog.width);
+  assert(box(snapshot, "tray-color-hue").width >= 180);
+  const sizeSlider = locate("tray-number-size");
+  assert.equal((await sizeSlider.node()).control?.value, trayNumberSize.default);
+  await locate("tray-style-number").press("Space");
+  await sizeSlider.press("Home");
+  await wait(() => state.trayDrafts.headset?.numberSize === trayNumberSize.min);
+  await sizeSlider.press("ArrowRight");
+  await wait(() => state.trayDrafts.headset?.numberSize === 70);
+
+  const hex = locate("tray-color-hex");
+  await hex.fill("#9976EB");
+  await wait(() => state.trayDrafts.headset?.color === 0x9976eb);
+  assert.equal(state.preferences.tray.headset.numberSize, trayNumberSize.default);
   await render.capture(resolve(folder, `${name}-configuracoes.png`));
-  await locate("startup").click();
-  await wait(() => state.startup);
+  await locate("tray-device-mouse").click();
+  await wait(() => state.trayDevice === "mouse");
+  await render.waitFor(current => box(current, "tray-number-size").control?.value === trayNumberSize.default);
+  await locate("tray-style-bars").click();
+  await sizeSlider.press("End");
+  await wait(() => state.trayDrafts.mouse?.numberSize === trayNumberSize.max);
+  await locate("tray-color-hue").press("Home");
+  await wait(() => state.trayDrafts.mouse?.tone?.hue === 0);
+  await locate("tray-color-saturation").press("End");
+  await wait(() => state.trayDrafts.mouse?.tone?.saturation === 100);
+  assert(state.trayDrafts.mouse?.color !== undefined);
+  await hex.fill("#ZZZZZZ");
+  await locate("tray-color-error").waitFor();
+  await locate("apply-tray-settings").click();
+  assert.equal(state.preferences.tray.mouse.color, undefined);
+  await hex.fill("#ED6530");
+  await wait(() => state.trayDrafts.mouse?.color === 0xed6530);
+
+  await locate("tray-device-headset").click();
+  await render.waitFor(current => box(current, "tray-number-size").control?.value === 70);
+  await locate("apply-tray-settings").click();
+  await wait(() => state.preferences.tray.headset.color === 0x9976eb && state.preferences.tray.mouse.color === 0xed6530);
+  assert.equal(state.preferences.tray.headset.numberSize, 70);
+  assert.equal(state.preferences.tray.mouse.numberSize, trayNumberSize.max);
+  await locate("tray-color-default").click();
+  await wait(() => state.trayDrafts.headset?.color === undefined);
   await locate("close-settings").press("Escape");
   await wait(() => !state.settingsOpen);
-  assert(!(await render.inspect()).nodes.some(node => node.id === "startup"));
+  assert.equal(state.preferences.tray.headset.color, 0x9976eb);
+  await locate("open-settings").click();
+  await render.waitFor(current => current.nodes.some(node => node.id === "tray-number-size" && node.control?.value === 70));
+  await locate("settings-general").click();
+  await locate("startup").waitFor();
+  await locate("startup").click();
+  await wait(() => state.startup);
+  await locate("close-settings").click();
+  await wait(() => !state.settingsOpen);
 }
 
 async function verifyUpdates(): Promise<void> {

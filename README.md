@@ -18,9 +18,11 @@ Controle o microfone e os LEDs do seu headset, ajuste o DPI e a taxa de polling 
 
 Se você compilou o projeto localmente, abra `dist/Perifericos.exe`.
 
-A porcentagem do headset aparece em **azul** na bandeja do sistema e a do mouse selecionado, em **verde**. Passe o cursor sobre o indicador para conferir o estado de carga. Se os ícones estiverem no menu oculto **^**, arraste-os para perto do relógio.
+O ícone do headset aparece em **azul** na bandeja do sistema e o do mouse selecionado, em **verde**. Passe o cursor sobre o indicador para conferir o estado de carga. Se os ícones estiverem no menu oculto **^**, arraste-os para perto do relógio.
 
-Para manter o controle em segundo plano ao entrar na conta, abra **Configurações** pela engrenagem ou pelo menu da bandeja e ative **Iniciar com o Windows**. O app abre na bandeja cerca de 15 segundos após o login. Se a versão portátil já iniciava com o Windows, o instalador transfere essa configuração para o app instalado.
+Em **Configurações → Bandeja**, selecione o headset ou o mouse para escolher o estilo, ajustar a cor e definir o tamanho do estilo **Número**. As faixas de cor e o campo HEX atualizam a prévia. Clique em **Aplicar** para salvar as alterações dos dispositivos. Em qualquer estilo, o percentual exato aparece ao passar o cursor sobre o ícone.
+
+Para manter o controle em segundo plano ao entrar na conta, abra **Configurações → Geral** e ative **Iniciar com o Windows**. O app abre na bandeja cerca de 15 segundos após o login. Se a versão portátil já iniciava com o Windows, o instalador transfere essa configuração para o app instalado.
 
 ## Dispositivos compatíveis
 
