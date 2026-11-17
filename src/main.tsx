@@ -50,7 +50,8 @@ async function main(): Promise<void> {
   const preferences = store.load();
   const packagedApp = packaged();
   const state: PanelState = {
-    visible: !args.includes("--run"), dark: systemDark(), tab: args.includes("--mouse") ? "mouse" : "headset",
+    visible: !args.includes("--run"), dark: systemDark(),
+    tab: args.includes("--mouse") ? "mouse" : args.includes("--headset") ? "headset" : "home",
     preferences, startup: false, startupPending: false, startupAvailable: packagedApp, settingsOpen: false,
     headset: { status: "looking" }, mouse: { status: "looking" }, mouseModels: [], mouseBusy: false,
     headsetNotice: importError, dpi: "", rate: "",
@@ -212,7 +213,8 @@ async function main(): Promise<void> {
     async installUpdate() {
       const version = await updates.install();
       if (!version) return;
-      const next = state.visible ? ["--updates", `--updated=${version}`, ...(state.tab === "mouse" ? ["--mouse"] : [])] : ["--run"];
+      const tabArgs = state.tab === "home" ? [] : [`--${state.tab}`];
+      const next = state.visible ? ["--updates", `--updated=${version}`, ...tabArgs] : ["--run"];
       await quit();
       const restarted = spawn(process.execPath, next, { detached: true, stdio: "ignore", windowsHide: true });
       restarted.once("error", error => console.error("Reinício após atualização:", error));
@@ -232,7 +234,7 @@ async function main(): Promise<void> {
       else if (launch.args.includes("--hide")) hide();
       else if (!launch.args.includes("--run")) {
         if (launch.args.includes("--updates")) openUpdates(true);
-        show(launch.args.includes("--mouse") ? "mouse" : state.tab);
+        show(launch.args.includes("--mouse") ? "mouse" : launch.args.includes("--headset") ? "headset" : state.tab);
       }
     });
     tray = app.tray({

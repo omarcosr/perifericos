@@ -4,13 +4,13 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createTestRenderer } from "@tarve/core";
 import type { NodeSnapshot, Snapshot } from "@tarve/core/protocol";
-import { mchoseK7, viper } from "../src/devices/catalog";
+import { hs80, mchoseK7, viper } from "../src/devices/catalog";
 import { K7_RATES } from "../src/devices/mchose-protocol";
 import { Panel, type PanelActions, type PanelState } from "../src/ui/panel";
 
 const [scenario = "headset", scheme = "dark", size = "normal", output] = process.argv.slice(2);
 const sizes: Record<string, readonly [number, number]> = {
-  normal: [672, 704], compact: [464, 504], below: [577, 656], above: [578, 656], wide: [1088, 760],
+  normal: [944, 584], compact: [464, 504], below: [761, 656], above: [762, 656], wide: [1200, 760],
 };
 const dimensions = sizes[size];
 assert(dimensions, `Tamanho de janela desconhecido: ${size}`);
@@ -18,7 +18,7 @@ assert(scheme === "dark" || scheme === "light", `Tema desconhecido: ${scheme}`);
 const [width, height] = dimensions;
 const headset = scenario.startsWith("headset");
 const state: PanelState = {
-  visible: true, dark: scheme === "dark", tab: headset ? "headset" : "mouse",
+  visible: true, dark: scheme === "dark", tab: scenario.startsWith("home") ? "home" : headset ? "headset" : "mouse",
   headset: { status: "connected", battery: 37, hardwareMuted: false, windowsMuted: false },
   mouse: { status: "connected", model: viper.id, wireless: true, battery: 95, dpi: { x: 1300, y: 1300 }, polling: 1000,
     rates: [125, 500, 1000, 2000, 4000, 8000] },
@@ -53,6 +53,16 @@ switch (scenario) {
     state.dpi = "1600";
     state.rate = "2000";
     break;
+  case "home-off":
+    state.headset = { status: "disconnected" };
+    state.mouse = { status: "disconnected" };
+    state.mouseModels = [];
+    break;
+  case "home-all":
+    state.headset.charging = true;
+    state.mouseModels = [viper.id, mchoseK7.id];
+    break;
+  case "home": break;
   case "mouse-picker": state.mouseModels = [viper.id, mchoseK7.id]; break;
   case "updates": break;
   case "headset": case "mouse": break;
@@ -119,61 +129,99 @@ function aligned(first: number, second: number, detail: string): void {
 
 function verifyLayout(snapshot: Snapshot, layout = size): void {
   const find = (id: string) => box(snapshot, id);
+  const has = (id: string) => snapshot.nodes.some(node => node.id === id);
   const right = (node: NodeSnapshot) => node.x + node.width;
-  const middle = (node: NodeSnapshot) => node.y + node.height / 2;
-  assert(!snapshot.nodes.some(node => node.id === "refresh-mouse"));
+  const bottom = (node: NodeSnapshot) => node.y + node.height;
+  const scroll = find("device-scroll");
+  assert.equal(scroll.scrollMaxX ?? 0, 0, "O painel deve ter apenas rolagem vertical");
+  assert(!has("refresh-mouse"));
+
   if (state.updates?.open) {
     const dialog = find("app-updates-content");
-    const scroll = find("device-scroll");
     aligned(dialog.x + dialog.width / 2, snapshot.width / 2, "Centro horizontal do popup");
-    aligned(middle(dialog), snapshot.height / 2, "Centro vertical do popup");
+    aligned(dialog.y + dialog.height / 2, snapshot.height / 2, "Centro vertical do popup");
     assert(dialog.x >= 16 && right(dialog) <= snapshot.width - 16);
     assert(snapshot.nodes.some(node => node.text === "Versão instalada 0.5.0"));
-    assert.equal(scroll.scrollMaxX ?? 0, 0);
-    find("device-overview");
     return;
   }
-  const overview = find("device-overview");
-  const scroll = find("device-scroll");
-  const title = find("device-name");
-  const photo = find("device-photo");
-  const leftTab = find("tab-headset");
-  const rightTab = find("tab-mouse");
-  const compact = scroll.width < 576;
-  aligned(find("panel-brand").x, overview.x, "Recuo da barra de título");
-  aligned(title.x, overview.x + 17, "Recuo do cabeçalho");
-  aligned(title.y, overview.y + (compact ? 17 : 25), "Altura do título do dispositivo");
-  aligned(photo.width, compact ? 128 : 192, "Largura da foto");
-  aligned(leftTab.width, rightTab.width, "Largura das abas");
-  aligned(middle(leftTab), middle(rightTab), "Centro das abas");
-  assert.equal(scroll.scrollMaxX ?? 0, 0, "O painel deve ter apenas rolagem vertical");
+  const tabs = ["tab-home", "tab-headset", "tab-mouse"].map(find);
+  for (const tab of tabs) {
+    aligned(tab.y, tabs[0].y, "Altura da navegação");
+    assert(right(tab) < find("open-settings").x, "Ações da janela e abas não se sobrepõem");
+  }
   if (layout === "normal" || layout === "wide") assert.equal(scroll.scrollMax, 0);
-  if (layout === "below") assert(compact);
-  if (layout === "above") assert(!compact);
 
-  const tab = state.tab;
-  const device = tab === "headset" ? state.headset : state.mouse;
-  if (device.status !== "connected") {
-    assert(snapshot.nodes.some(node => node.id === "device-notice"));
-    assert(!snapshot.nodes.some(node => ["battery-reading", "headset-settings", "mouse-settings"].includes(node.id)));
+  if (state.tab === "home") {
+    find("gallery-title");
+    assert(!has("device-controls"));
+    const first = find(`open-${hs80.id}`);
+    const second = find(`open-${state.mouse.model ?? "mouse"}`);
+    assert(right(second) <= right(scroll));
+    const gallery = find("device-gallery");
+    aligned(first.x, gallery.x, "Margem esquerda da galeria");
+    if (layout === "compact") {
+      aligned(second.x, first.x, "Coluna dos dispositivos");
+      assert(second.y >= bottom(first) + 16);
+    } else {
+      aligned(second.y, first.y, "Linha dos dispositivos");
+      aligned(second.x - right(first), 16, "Espaço entre os dispositivos");
+      assert(find(`photo-${hs80.id}`).height >= 200);
+    }
+    if (scenario === "home-all") {
+      const third = find(`open-${mchoseK7.id}`);
+      if (layout === "compact") {
+        aligned(third.x, second.x, "Coluna do terceiro dispositivo");
+        assert(third.y >= bottom(second) + 16);
+        assert(scroll.scrollMax > 0 && scroll.scrollMax < 160, "A rolagem termina logo após o terceiro dispositivo");
+      } else {
+        aligned(third.y, second.y, "Terceiro dispositivo");
+      }
+      aligned(right(third), right(gallery), "Margem direita da galeria");
+      assert(snapshot.nodes.some(node => node.text === "Receptor ou cabo detectado"));
+      assert.equal(find(`battery-status-${hs80.id}`).text, "Carregando");
+      assert(!has(`battery-reading-${mchoseK7.id}`), "O mouse sem leitura não deve exibir bateria");
+    } else {
+      aligned(right(second), right(gallery), "Margem direita da galeria");
+      assert.equal(scroll.scrollMax, 0, "A galeria com dois dispositivos cabe sem rolagem");
+    }
+    if (scenario === "home-off") assert(!snapshot.nodes.some(node => node.id.startsWith("battery-reading")));
     return;
   }
-  const status = find("device-status-row");
+
+  const overview = find("device-overview");
+  const photo = find("device-photo");
+  aligned(find("panel-brand").x, overview.x, "Recuo da barra de título");
+  const device = state.tab === "headset" ? state.headset : state.mouse;
+  if (device.status !== "connected") {
+    find("device-notice");
+    assert(!has("battery-reading") && !has("device-controls"));
+    return;
+  }
+  const controls = find("device-controls");
+  assert(right(controls) <= right(scroll));
+  const split = photo.height === 216;
+  if (layout === "below") assert(!split);
+  if (layout === "above") assert(split);
+  if (split) {
+    aligned(controls.y, overview.y, "Topo das duas colunas");
+    aligned(controls.x - right(overview), 16, "Espaço entre foto e controles");
+  } else {
+    aligned(controls.x, overview.x, "Coluna dos controles");
+    aligned(controls.y - bottom(overview), 16, "Espaço antes dos controles");
+  }
   const battery = find("battery-reading");
   assert.equal(find("battery-status").text, device.charging ? "Carregando" : "Bateria");
   if (device.charging) {
     assert(!snapshot.nodes.some(node => node.text === "Bateria" || node.id === "battery-low"));
   }
-  aligned(middle(find("device-connection")), middle(status), "Centro da faixa de conexão");
-  aligned(right(battery), right(status), "Coluna da bateria");
   if (device.battery !== undefined) {
     const track = find("battery-track");
-    aligned(track.x, title.x, "Início da barra de bateria");
+    aligned(track.x, find("device-name").x, "Início da barra de bateria");
     aligned(right(track), right(battery), "Fim da barra de bateria");
   }
-  if (tab === "headset") {
-    aligned(find("leds").x, title.x, "Coluna dos controles do headset");
-    assert(!snapshot.nodes.some(node => node.id === "startup"), "A inicialização pertence ao popup");
+
+  if (state.tab === "headset") {
+    assert(!has("startup"), "A inicialização pertence ao popup");
     for (const id of ["sound-active", "sound-muted"]) {
       const field = find(`${id}-trigger`);
       const button = find(`${id}-preview`);
@@ -182,8 +230,7 @@ function verifyLayout(snapshot: Snapshot, layout = size): void {
       aligned(button.x - right(field), 8, `Espaço após o seletor ${id}`);
     }
     aligned(find("sound-active-trigger").width, find("sound-muted-trigger").width, "Largura dos seletores de som");
-    if (compact) aligned(find("sound-active-preview").x, find("sound-muted-preview").x, "Coluna dos botões Ouvir");
-    else aligned(find("sound-active-preview").y, find("sound-muted-preview").y, "Linha dos botões Ouvir");
+    aligned(find("sound-active-preview").x, find("sound-muted-preview").x, "Coluna dos botões Ouvir");
     return;
   }
   const polling = find("polling");
@@ -199,22 +246,14 @@ function verifyLayout(snapshot: Snapshot, layout = size): void {
     aligned(dpi.y, applyDpi.y, "Linha do campo DPI");
     aligned(dpi.height, applyDpi.height, "Altura do campo DPI");
     aligned(applyDpi.x, applyRate.x, "Coluna dos botões Aplicar");
-    aligned(applyDpi.width, applyRate.width, "Largura dos botões Aplicar");
-    if (compact) {
-      aligned(slider.width, polling.width, "Largura dos controles no compacto");
-      assert(dpi.y > slider.y + slider.height, "O campo deve ficar abaixo do slider no compacto");
-    } else {
-      aligned(slider.y, dpi.y, "Linha do slider e do campo DPI");
-      assert(right(slider) <= dpi.x - 8, "O slider precisa de espaço antes do campo DPI");
-    }
+    assert(dpi.y > bottom(slider), "O campo deve ficar abaixo do slider");
   } else {
-    assert(!snapshot.nodes.some(node => ["dpi-slider", "dpi", "apply-dpi"].includes(node.id)));
+    assert(!has("dpi-slider") && !has("dpi") && !has("apply-dpi"));
   }
-  if (compact) aligned(applyRate.y - (polling.y + polling.height), 8, "Espaço após as frequências no compacto");
-  else aligned(polling.y, applyRate.y, "Linha das frequências");
   const rateBoxes = state.mouse.rates!.map(rate => find(`polling-item-${rate}`));
   for (const [index, rate] of rateBoxes.entries()) {
     aligned(rate.width, rateBoxes[0].width, "Largura das frequências");
+    assert(rate.width >= 32, "Área de clique da frequência");
     if (index > 0) aligned(rate.x - right(rateBoxes[index - 1]), 4, "Espaço entre frequências");
   }
 }
@@ -383,7 +422,7 @@ async function verifyResize(): Promise<void> {
     render.app.debug({ type: "resize", width: nextWidth, height: nextHeight });
     await render.waitFor(current => {
       const photo = box(current, "device-photo");
-      return Math.abs(current.width - nextWidth) <= 1 && photo.width === (nextWidth < 576 ? 128 : 192);
+      return Math.abs(current.width - nextWidth) <= 1 && photo.height === (nextWidth < 760 ? 104 : 216);
     }, { timeout: 3000 });
     verifyLayout(await render.inspect(), layout);
   }
@@ -400,6 +439,17 @@ try {
   }
   if (scenario === "mouse" && size === "normal") await verifyDpiSlider();
   if (scenario === "mouse-picker") await verifyMousePicker();
+  if (scenario === "home-all" && size === "normal") {
+    await locate(`open-${mchoseK7.id}`).press("Space");
+    await wait(() => state.tab === "mouse" && state.mouse.model === mchoseK7.id);
+    await render.waitFor(current => box(current, "device-name").text === mchoseK7.label);
+    verifyLayout(await render.inspect());
+    await locate("tab-home").click();
+    await locate("gallery-title").waitFor();
+    await locate(`open-${hs80.id}`).click();
+    await wait(() => state.tab === "headset");
+    await locate("mic-reading").waitFor();
+  }
   if (scenario === "updates") await verifyUpdates();
   if (scenario === "headset" || scenario === "mouse-off") await verifySettings();
   if (size === "compact" && box(snapshot, "device-scroll").scrollMax > 0) {

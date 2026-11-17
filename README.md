@@ -4,6 +4,8 @@ Controle o microfone e os LEDs do seu headset, ajuste o DPI e a taxa de polling 
 
 [Baixar para Windows x64](https://github.com/omarcosr/perifericos/releases/latest) · [Dispositivos compatíveis](#dispositivos-compatíveis) · [Desenvolvimento](#desenvolvimento)
 
+![Visão geral do Periféricos com o Corsair HS80 MAX e o Razer Viper V3 Pro](docs/media/overview.webp)
+
 | Headset · tema escuro | Mouse · tema claro |
 | --- | --- |
 | ![Corsair HS80 MAX com os controles do microfone e dos LEDs](docs/media/headset.webp) | ![MCHOSE K7 Ultra carregando, com controles de DPI e polling](docs/media/mouse.webp) |
@@ -12,7 +14,7 @@ Controle o microfone e os LEDs do seu headset, ajuste o DPI e a taxa de polling 
 
 1. Baixe o `Perifericos-Setup-<versão>-win32-x64.exe` na seção **Assets** da release mais recente.
 2. Execute o instalador e abra **Periféricos** pelo menu Iniciar. A instalação é por usuário e pode ser removida em **Configurações do Windows → Aplicativos → Aplicativos instalados**.
-3. Conecte o receptor do headset ou o mouse compatível e selecione **Headset** ou **Mouse** no painel.
+3. Conecte o receptor do headset ou o mouse compatível. Na **Visão geral**, veja a conexão e a bateria de cada dispositivo com leitura disponível. Selecione um dispositivo para abrir seus ajustes.
 
 Se você compilou o projeto localmente, abra `dist/Perifericos.exe`.
 
